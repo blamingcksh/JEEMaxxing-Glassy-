@@ -948,6 +948,7 @@ export function removeErrorLog(id) {
                 _staggeredChain([
                     () => renderErrorMatrixFromBank(),
                     () => { filterErrors(); renderErrorResolutionDashboard(); },
+                    () => { try { renderChapterDecayGrid(); } catch (_) {} },
                 ]);
             });
         });
@@ -1284,6 +1285,7 @@ export function addErrorBlock() {
         requestAnimationFrame(() => {
             renderErrorMatrixFromBank();
             filterErrors();
+            try { renderChapterDecayGrid(); } catch (_) {}
         });
     });
 }
@@ -1549,7 +1551,7 @@ export function renderChapterDecayGrid() {
         return `
             <g class="decay-row">
                 <text x="10" y="${y + ROW_H / 2}"
-                      style="fill: var(--text-secondary); font-size: 11.5px; font-family: 'Plus Jakarta Sans', sans-serif; font-weight: 600;"
+                      style="fill: var(--text-secondary); font-size: 11.5px; font-family: 'IBM Plex Sans', sans-serif; font-weight: 600;"
                       dominant-baseline="middle" text-anchor="start">${displayName}</text>
                 <rect x="${LABEL_W}" y="${trackY}"
                       width="${TRACK_W}" height="${TRACK_H}" rx="${TRACK_R}"
@@ -1561,7 +1563,7 @@ export function renderChapterDecayGrid() {
                       style="${fillStyle} font-size: 12px; font-family: 'Space Grotesk', monospace; font-weight: 700;"
                       dominant-baseline="middle" text-anchor="start">${ch.health.toFixed(0)}%</text>
                 <text x="${META_X}" y="${y + ROW_H / 2}"
-                      style="fill: var(--text-muted); font-size: 10px; font-family: 'Plus Jakarta Sans', sans-serif; font-weight: 500;"
+                      style="fill: var(--text-muted); font-size: 10px; font-family: 'IBM Plex Sans', sans-serif; font-weight: 500;"
                       dominant-baseline="middle" text-anchor="start">${ch.questionCount}q · EF ${ch.avgEF.toFixed(2)}</text>
             </g>`;
     }).join('');
@@ -1775,7 +1777,7 @@ function _renderMomentumSparkline(data) {
     const labelIndices = [0, Math.floor(data.length / 2), data.length - 1];
     const labels = labelIndices.map(i => {
         const p = points[i];
-        return `<text x="${p.x}" y="${H - 1}" fill="var(--text-muted)" font-size="8" font-family="'Plus Jakarta Sans', sans-serif" text-anchor="${i === 0 ? 'start' : i === data.length - 1 ? 'end' : 'middle'}" font-weight="500">${data[i].dayLabel}</text>`;
+        return `<text x="${p.x}" y="${H - 1}" fill="var(--text-muted)" font-size="8" font-family="'IBM Plex Sans', sans-serif" text-anchor="${i === 0 ? 'start' : i === data.length - 1 ? 'end' : 'middle'}" font-weight="500">${data[i].dayLabel}</text>`;
     }).join('');
 
     const peakIdx = points.reduce((mi, p, i, arr) => p.count > arr[mi].count ? i : mi, 0);
