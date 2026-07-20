@@ -884,5 +884,191 @@ window.setMatrixSearch = function (value) {
 <script type="module" src="./checkpoint.js"></script>
 <script type="module" src="./fx.js"></script>
 
+<!-- ════════════════════════════════════════════════════════════════════════
+     BENTO RESIZE CONTROLLER — drag-to-resize + density + focus + persist.
+     Inline module (runs after app.js, so window.renderGraph etc. exist).
+     Gated to >=901px; below that the responsive CSS stack governs.
+     ════════════════════════════════════════════════════════════════════════ -->
+<script type="module">
+(function () {
+    const LS = 'jeemax_bento_layout';
+    const BP = 901;
+    const wide = () => window.matchMedia(`(min-width: ${BP}px)`).matches;
+    const clamp = (n, lo, hi) => Math.max(lo, Math.min(hi, n));
+    const IDS = ['tracker', 'momentum', 'bounty', 'decay'];
+    const cardById = id => document.querySelector(`#view-dashboard .dash-card-${id}`);
+    const idOf = card => IDS.find(k => card.classList.contains('dash-card-' + k));
+
+    function ready(fn) {
+        if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', fn);
+        else fn();
+    }
+    function load() { try { return JSON.parse(localStorage.getItem(LS)) || {}; } catch (e) { return {}; } }
+    function save(o) { try { localStorage.setItem(LS, JSON.stringify(o)); } catch (e) {} }
+
+    function spanOf(card) {
+        const s = getComputedStyle(card);
+        const n = parseInt(s.gridColumnEnd, 10) - parseInt(s.gridColumnStart, 10);
+        return (n > 0 && n <= 12) ? n : 6;
+    }
+    function setSpan(card, n) { card.style.gridColumn = 'span ' + clamp(n, 3, 12); }
+    function clearSpan(card) { card.style.gridColumn = ''; }
+
+    let settleT = 0;
+    function settle() {
+        clearTimeout(settleT);
+        settleT = setTimeout(() => {
+            try { if (typeof window.renderGraph === 'function') window.renderGraph(); } catch (e) {}
+            try { if (typeof window.renderMomentumCandles === 'function') window.renderMomentumCandles(); } catch (e) {}
+            try { if (typeof window.renderChapterDecayGrid === 'function') window.renderChapterDecayGrid(); } catch (e) {}
+        }, 180);
+    }
+
+    function persistSpans() {
+        const o = load(); o.spans = o.spans || {};
+        IDS.forEach(id => { const c = cardById(id); if (c) o.spans[id] = spanOf(c); });
+        save(o);
+    }
+
+    function buildToolbar(dash) {
+        const tb = document.createElement('div');
+        tb.className = 'bento-toolbar';
+        tb.innerHTML = `
+            <span class="bt-label">Layout</span>
+            <div class="bento-seg" data-bento-density>
+                <button data-d="compact">Compact</button>
+                <button data-d="cozy" class="active">Cozy</button>
+                <button data-d="spacious">Spacious</button>
+            </div>
+            <button class="bento-edit-btn" data-bento-edit>✛ Resize</button>
+            <button class="bento-reset-btn" data-bento-reset>↺ Reset</button>
+            <span class="bento-hint">Drag a card's right edge · ⤢ = full row · auto‑saved</span>`;
+        dash.insertBefore(tb, dash.firstChild);
+
+        const o = load();
+        const grid = dash.querySelector('.dash-grid');
+        const applyDensity = d => {
+            grid.classList.remove('bento-density-compact', 'bento-density-cozy', 'bento-density-spacious');
+            if (d && d !== 'cozy') grid.classList.add('bento-density-' + d);
+            tb.querySelectorAll('[data-d]').forEach(b => b.classList.toggle('active', b.dataset.d === d));
+            const s = load(); s.density = d; save(s); settle();
+        };
+        applyDensity(o.density || 'cozy');
+        tb.querySelector('[data-bento-density]').addEventListener('click', e => {
+            const b = e.target.closest('[data-d]'); if (b) applyDensity(b.dataset.d);
+        });
+
+        const editBtn = tb.querySelector('[data-bento-edit]');
+        editBtn.addEventListener('click', () => {
+            const on = dash.classList.toggle('bento-edit');
+            editBtn.classList.toggle('active', on);
+        });
+        tb.querySelector('[data-bento-reset]').addEventListener('click', () => {
+            IDS.forEach(id => { const c = cardById(id); if (c) { clearSpan(c); delete c.dataset.bentoPrev; } });
+            save({ density: (load().density || 'cozy') });
+            settle();
+        });
+        return tb;
+    }
+
+    function equipCard(card) {
+        if (card.dataset.bentoEquip) return;
+        card.dataset.bentoEquip = '1';
+
+        const ctrls = document.createElement('div');
+        ctrls.className = 'bento-card-ctrls';
+        const focus = document.createElement('button');
+        focus.className = 'bento-ctrl-btn'; focus.type = 'button';
+        focus.title = 'Expand / restore width'; focus.textContent = '⤢';
+        focus.addEventListener('click', () => {
+            const cur = spanOf(card);
+            if (cur >= 12) setSpan(card, parseInt(card.dataset.bentoPrev || '6', 10));
+            else { card.dataset.bentoPrev = String(cur); setSpan(card, 12); }
+            persistSpans(); settle();
+        });
+        ctrls.appendChild(focus);
+        card.appendChild(ctrls);
+
+        const handle = document.createElement('div');
+        handle.className = 'bento-handle'; handle.tabIndex = 0;
+        handle.setAttribute('role', 'slider');
+        handle.setAttribute('aria-label', 'Resize card width');
+        card.appendChild(handle);
+
+        handle.addEventListener('pointerdown', e => {
+            if (!document.getElementById('view-dashboard').classList.contains('bento-edit')) return;
+            e.preventDefault();
+            const grid = document.querySelector('#view-dashboard .dash-grid');
+            const colW = grid.getBoundingClientRect().width / 12;
+            const start = spanOf(card), x0 = e.clientX; let cur = start;
+            grid.classList.add('bento-dragging');
+            card.classList.add('bento-drag-target');
+            document.body.classList.add('bento-dragging');
+            try { handle.setPointerCapture(e.pointerId); } catch (_) {}
+            handle.setAttribute('aria-valuenow', cur);
+
+            const move = ev => {
+                const ns = clamp(start + Math.round((ev.clientX - x0) / colW), 3, 12);
+                if (ns !== cur) { cur = ns; setSpan(card, ns); handle.setAttribute('aria-valuenow', ns); }
+            };
+            const up = ev => {
+                try { handle.releasePointerCapture(ev.pointerId); } catch (_) {}
+                handle.removeEventListener('pointermove', move);
+                handle.removeEventListener('pointerup', up);
+                handle.removeEventListener('pointercancel', up);
+                grid.classList.remove('bento-dragging');
+                card.classList.remove('bento-drag-target');
+                document.body.classList.remove('bento-dragging');
+                persistSpans(); settle();
+            };
+            handle.addEventListener('pointermove', move);
+            handle.addEventListener('pointerup', up);
+            handle.addEventListener('pointercancel', up);
+        });
+
+        handle.addEventListener('keydown', e => {
+            if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+            e.preventDefault();
+            const ns = clamp(spanOf(card) + (e.key === 'ArrowRight' ? 1 : -1), 3, 12);
+            setSpan(card, ns); handle.setAttribute('aria-valuenow', ns);
+            persistSpans(); settle();
+        });
+    }
+
+    function applySaved() {
+        const spans = (load().spans) || {};
+        IDS.forEach(id => {
+            const c = cardById(id); if (!c) return;
+            if (wide()) { if (spans[id]) setSpan(c, spans[id]); }
+            else clearSpan(c);
+        });
+    }
+
+    function watchDecayWidth() {
+        const box = document.getElementById('chapter-decay-grid');
+        if (!box || !('ResizeObserver' in window)) return;
+        let t = 0;
+        new ResizeObserver(() => {
+            clearTimeout(t);
+            t = setTimeout(() => {
+                try { if (typeof window.renderChapterDecayGrid === 'function') window.renderChapterDecayGrid(); } catch (e) {}
+            }, 160);
+        }).observe(box);
+    }
+
+    ready(() => {
+        const dash = document.getElementById('view-dashboard');
+        if (!dash || dash.dataset.bentoInit) return;
+        dash.dataset.bentoInit = '1';
+        buildToolbar(dash);
+        IDS.forEach(id => { const c = cardById(id); if (c) equipCard(c); });
+        applySaved();
+        watchDecayWidth();
+        window.matchMedia(`(min-width: ${BP}px)`).addEventListener('change', applySaved);
+        requestAnimationFrame(settle);
+    });
+})();
+</script>
+
 </body>
 </html>

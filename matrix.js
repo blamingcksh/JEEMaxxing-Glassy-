@@ -1487,14 +1487,9 @@ function _matrixChapterHealthContinuous(questions) {
 export function renderChapterDecayGrid() {
     const container = document.getElementById('chapter-decay-grid');
     if (!container) return;
-
     const allErrors = AppState.questionBank.filter(q =>
         q.errorReason && (q.status === 'error' || q.status === 'solved' || q.status === 'wrong')
     );
-
-    // Group by (subject, chapter) so each domain resolves its own continuous
-    // accessibility score — consistent with _getChapterHealth and the
-    // cat-banner CRITICAL_DECAY scanner.
     const chapterMap = {};
     allErrors.forEach(q => {
         const subject = q.subject || '';
@@ -1503,85 +1498,69 @@ export function renderChapterDecayGrid() {
         if (!chapterMap[key]) chapterMap[key] = { name: chapter, questions: [] };
         chapterMap[key].questions.push(q);
     });
-
     const chapters = Object.values(chapterMap).map(({ name, questions }) => {
         const avgEF = questions.reduce((sum, q) => sum + (q.easeFactor || 2.5), 0) / questions.length;
-        const overdueCount = questions.filter(q => getDueStatus(q).status === 'ready').length;
         const health = _matrixChapterHealthContinuous(questions);
-        return { name, health, questionCount: questions.length, avgEF, overdueCount };
+        return { name, health, questionCount: questions.length, avgEF };
     });
-
     chapters.sort((a, b) => a.health - b.health);
-
     if (chapters.length === 0) {
         container.innerHTML = '<div style="text-align:center; color:var(--text-muted); padding:32px 16px; font-size:13px;">No chapter data available yet. Log errors to see decay analysis.</div>';
         return;
     }
 
-    const ROW_H = 38;
-    const LABEL_W = 170;
-    const TRACK_W = 280;
-    const TRACK_H = 18;
-    const TRACK_R = 5;
-    const PCT_X = LABEL_W + TRACK_W + 14;
-    const META_X = PCT_X + 52;
-    const TOTAL_W = META_X + 120;
-    const PAD = 4;
+    // ── Responsive layout: derive every column from the card's live width ──
+    // viewBox width == container pixel width ⇒ 1 user-unit == 1px ⇒ crisp
+    // text at every size (no uniform down-scale blur). The track simply
+    // grows/shrinks; the meta column is dropped when there's no room.
+    const cw = Math.max(220, container.clientWidth || 600);
+    const compact = cw < 440;
+    const tight = cw < 560;
+    const SHOW_META = cw > 520;
 
+    const ROW_H = 38, PAD = 4;
+    const LEFT = 10, G = 12, PCT_W = 44, META_W = 116, RIGHT = 8;
+    const LABEL_W = compact ? 84 : (tight ? 120 : 168);
+    const trackX = LEFT + LABEL_W + G;
+    const trackW = Math.max(40, cw - LEFT - LABEL_W - G - G - PCT_W - (SHOW_META ? G + META_W : 0) - RIGHT);
+    const pctX = trackX + trackW + G;
+    const metaX = pctX + PCT_W + G;
+    const maxName = compact ? 10 : (tight ? 16 : 24);
+    const TRACK_H = 18, TRACK_R = 5;
     const svgH = chapters.length * ROW_H + PAD * 2;
 
     let svgRows = chapters.map((ch, i) => {
         const y = i * ROW_H + PAD;
         const trackY = y + (ROW_H - TRACK_H) / 2;
-        const fillW = Math.max(3, (ch.health / 100) * TRACK_W);
-
+        const fillW = Math.max(3, (ch.health / 100) * trackW);
         let fillStyle, glowAttr = '', opacityAttr = '';
-        if (ch.health > 75) {
-            fillStyle = 'fill: var(--glow-green);';
-            glowAttr = 'filter: url(#decay-glow-green);';
-        } else if (ch.health >= 45) {
-            fillStyle = 'fill: var(--glow-yellow);';
-        } else {
-            fillStyle = 'fill: var(--glow-red);';
-            opacityAttr = 'opacity: 0.88;';
-        }
-
-        const displayName = ch.name.length > 24 ? ch.name.substring(0, 22) + '…' : ch.name;
-
+        if (ch.health > 75) { fillStyle = 'fill: var(--glow-green);'; glowAttr = 'filter: url(#decay-glow-green);'; }
+        else if (ch.health >= 45) { fillStyle = 'fill: var(--glow-yellow);'; }
+        else { fillStyle = 'fill: var(--glow-red);'; opacityAttr = 'opacity: 0.88;'; }
+        const displayName = ch.name.length > maxName ? ch.name.substring(0, maxName - 1) + '…' : ch.name;
+        const metaCell = SHOW_META
+            ? `<text x="${metaX}" y="${y + ROW_H / 2}" style="fill: var(--text-muted); font-size: 10px; font-family: 'Plus Jakarta Sans', sans-serif; font-weight: 500;" dominant-baseline="middle" text-anchor="start">${ch.questionCount}q · EF ${ch.avgEF.toFixed(2)}</text>`
+            : '';
         return `
             <g class="decay-row">
-                <text x="10" y="${y + ROW_H / 2}"
-                      style="fill: var(--text-secondary); font-size: 11.5px; font-family: 'IBM Plex Sans', sans-serif; font-weight: 600;"
-                      dominant-baseline="middle" text-anchor="start">${displayName}</text>
-                <rect x="${LABEL_W}" y="${trackY}"
-                      width="${TRACK_W}" height="${TRACK_H}" rx="${TRACK_R}"
-                      style="fill: rgba(255,255,255,0.035); stroke: rgba(255,255,255,0.06); stroke-width: 1;"/>
-                <rect x="${LABEL_W}" y="${trackY}"
-                      width="${fillW}" height="${TRACK_H}" rx="${TRACK_R}"
-                      style="${fillStyle} ${glowAttr} ${opacityAttr} transition: width 0.6s cubic-bezier(0.22, 1, 0.36, 1);"/>
-                <text x="${PCT_X}" y="${y + ROW_H / 2}"
-                      style="${fillStyle} font-size: 12px; font-family: 'Space Grotesk', monospace; font-weight: 700;"
-                      dominant-baseline="middle" text-anchor="start">${ch.health.toFixed(0)}%</text>
-                <text x="${META_X}" y="${y + ROW_H / 2}"
-                      style="fill: var(--text-muted); font-size: 10px; font-family: 'IBM Plex Sans', sans-serif; font-weight: 500;"
-                      dominant-baseline="middle" text-anchor="start">${ch.questionCount}q · EF ${ch.avgEF.toFixed(2)}</text>
+                <text x="${LEFT}" y="${y + ROW_H / 2}" style="fill: var(--text-secondary); font-size: 11.5px; font-family: 'Plus Jakarta Sans', sans-serif; font-weight: 600;" dominant-baseline="middle" text-anchor="start">${displayName}</text>
+                <rect x="${trackX}" y="${trackY}" width="${trackW}" height="${TRACK_H}" rx="${TRACK_R}" style="fill: rgba(255,255,255,0.035); stroke: rgba(255,255,255,0.06); stroke-width: 1;"/>
+                <rect x="${trackX}" y="${trackY}" width="${fillW}" height="${TRACK_H}" rx="${TRACK_R}" style="${fillStyle} ${glowAttr} ${opacityAttr} transition: width 0.6s cubic-bezier(0.22, 1, 0.36, 1);"/>
+                <text x="${pctX}" y="${y + ROW_H / 2}" style="${fillStyle} font-size: 12px; font-family: 'Space Grotesk', monospace; font-weight: 700;" dominant-baseline="middle" text-anchor="start">${ch.health.toFixed(0)}%</text>
+                ${metaCell}
             </g>`;
     }).join('');
 
     container.innerHTML = `
-        <svg viewBox="0 0 ${TOTAL_W} ${svgH}"
-             width="100%" height="${svgH}"
-             style="overflow: visible; display: block; min-width: ${TOTAL_W}px;"
-             preserveAspectRatio="xMidYMid meet">
+        <svg viewBox="0 0 ${cw} ${svgH}" width="100%" height="${svgH}"
+             preserveAspectRatio="xMidYMid meet"
+             style="overflow: visible; display: block; min-width: 0;">
             <defs>
                 <filter id="decay-glow-green" x="-20%" y="-40%" width="140%" height="180%">
                     <feGaussianBlur in="SourceGraphic" stdDeviation="3.5" result="blur"/>
                     <feFlood flood-color="#22c55e" flood-opacity="0.45" result="color"/>
                     <feComposite in="color" in2="blur" operator="in" result="glow"/>
-                    <feMerge>
-                        <feMergeNode in="glow"/>
-                        <feMergeNode in="SourceGraphic"/>
-                    </feMerge>
+                    <feMerge><feMergeNode in="glow"/><feMergeNode in="SourceGraphic"/></feMerge>
                 </filter>
             </defs>
             ${svgRows}

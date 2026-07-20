@@ -3931,3 +3931,144 @@ body:not(.scratchpad-active) #scratchpad-root:hover { opacity: 1; }
 @media (prefers-reduced-motion: reduce) {
     body::before, #view-dashboard .dash-card-tracker { animation: none !important; }
 }
+
+/* ════════════════════════════════════════════════════════════════════════
+   BENTO RESIZE — interactive, self-optimizing dashboard cards.
+   Append to the END of styles.css. Reversible: delete this block.
+   Width-drag on a 12-col grid + container-query reflow + density presets.
+   Vertical height is always auto (no clipped voids at any size).
+   Gated to >=901px in JS; below that the responsive stack governs.
+   ════════════════════════════════════════════════════════════════════════ */
+
+/* ── Dense packing so varied widths tile tightly (no row-band gaps) ──── */
+#view-dashboard .dash-grid { grid-auto-flow: row dense; }
+
+/* ── Each card is a query container → its internals optimize to ITS width ── */
+#view-dashboard .dash-card {
+    position: relative;
+    container-type: inline-size;
+    container-name: card;
+    /* fold padding into the transition so density changes glide smoothly */
+    transition: transform .25s cubic-bezier(.22,1,.36,1), box-shadow .25s ease,
+                border-color .25s ease, padding .28s ease, outline-color .2s ease;
+}
+#view-dashboard .dash-grid { transition: gap .28s ease; }
+#view-dashboard .subject-card-group { transition: gap .25s ease; }
+
+/* ── Resize handle (right edge) — invisible until Edit mode ──────────── */
+.bento-handle {
+    position: absolute; top: 10px; bottom: 10px; right: -4px; width: 12px;
+    display: flex; align-items: center; justify-content: center;
+    cursor: ew-resize; touch-action: none; z-index: 6;
+    opacity: 0; pointer-events: none; transition: opacity .2s ease;
+}
+.bento-handle::before {
+    content: ''; width: 4px; height: 32px; border-radius: 4px;
+    background: rgba(255,255,255,.16); box-shadow: 0 0 0 1px rgba(0,0,0,.35);
+    transition: background .15s ease, height .15s ease, box-shadow .15s ease;
+}
+.bento-handle:hover::before, .bento-handle:focus-visible::before {
+    background: var(--glow-orange, #f97316); height: 52px;
+    box-shadow: 0 0 16px rgba(249,115,22,.65);
+}
+.bento-handle:focus-visible { outline: none; }
+#view-dashboard.bento-edit .bento-handle { opacity: 1; pointer-events: auto; }
+#view-dashboard.bento-edit .dash-card { outline: 1px dashed rgba(255,255,255,.12); outline-offset: -2px; }
+
+/* ── Per-card focus control (top-right, Edit mode only) ──────────────── */
+.bento-card-ctrls { position: absolute; top: 10px; right: 12px; display: none; gap: 6px; z-index: 7; }
+#view-dashboard.bento-edit .bento-card-ctrls { display: flex; }
+.bento-ctrl-btn {
+    width: 26px; height: 26px; border-radius: 8px; cursor: pointer;
+    display: flex; align-items: center; justify-content: center; font-size: 13px;
+    background: rgba(8,9,13,.85); border: 1px solid rgba(255,255,255,.14); color: #cbd5e1;
+    backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+    transition: all .15s ease;
+}
+.bento-ctrl-btn:hover { border-color: var(--glow-orange,#f97316); color: #fff; box-shadow: 0 0 12px rgba(249,115,22,.4); }
+
+/* ── Drag feedback ───────────────────────────────────────────────────── */
+body.bento-dragging { user-select: none; -webkit-user-select: none; cursor: ew-resize; }
+#view-dashboard.bento-dragging .dash-card { transition: box-shadow .12s ease, border-color .12s ease; }
+.dash-card.bento-drag-target {
+    z-index: 8;
+    box-shadow: 0 22px 56px -22px rgba(0,0,0,.85), 0 0 0 1px rgba(249,115,22,.55) !important;
+    border-color: rgba(249,115,22,.5) !important;
+}
+
+/* ── Toolbar (Edit toggle · density · reset) ─────────────────────────── */
+.bento-toolbar {
+    display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+    padding: 8px 12px; border-radius: 14px;
+    background: rgba(13,16,23,.6); border: 1px solid rgba(255,255,255,.08);
+    backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.05);
+}
+.bento-toolbar .bt-label { font-size: 11px; font-weight: 700; letter-spacing: 1.4px; text-transform: uppercase; color: var(--text-secondary, #8a8ad3); }
+.bento-seg { display: inline-flex; gap: 4px; padding: 3px; border-radius: 10px; background: rgba(255,255,255,.04); border: 1px solid rgba(255,255,255,.07); }
+.bento-seg button {
+    padding: 6px 12px; border-radius: 8px; border: none; cursor: pointer;
+    font-size: 12px; font-weight: 600; color: var(--text-secondary, #8a8ad3);
+    background: transparent; transition: all .15s ease;
+}
+.bento-seg button:hover { color: #fff; background: rgba(255,255,255,.06); }
+.bento-seg button.active { color: #1a1206; background: linear-gradient(100deg, var(--glow-orange,#f97316), #ff7a1a); box-shadow: 0 2px 10px rgba(249,115,22,.35); }
+.bento-edit-btn, .bento-reset-btn {
+    padding: 6px 14px; border-radius: 9px; cursor: pointer; font-size: 12px; font-weight: 700;
+    border: 1px solid rgba(255,255,255,.12); background: rgba(255,255,255,.04); color: #e2e8f0;
+    transition: all .15s ease;
+}
+.bento-edit-btn:hover, .bento-reset-btn:hover { border-color: rgba(249,115,22,.5); color: #fff; }
+.bento-edit-btn.active { background: rgba(249,115,22,.16); border-color: var(--glow-orange,#f97316); color: #ffd9a0; box-shadow: 0 0 14px rgba(249,115,22,.3); }
+.bento-hint { font-size: 11px; color: var(--text-muted, #4a4a6a); display: none; }
+#view-dashboard.bento-edit .bento-hint { display: inline; }
+
+/* ── Density presets (animate via the padding/gap transitions above) ─── */
+#view-dashboard .dash-grid.bento-density-compact { gap: 12px; }
+#view-dashboard .dash-grid.bento-density-compact .dash-card { padding: 14px 16px; }
+#view-dashboard .dash-grid.bento-density-compact .box-title { font-size: 16px; }
+#view-dashboard .dash-grid.bento-density-compact .compact-stats .counter { font-size: 23px; }
+#view-dashboard .dash-grid.bento-density-compact .erm-total div { font-size: 30px; }
+#view-dashboard .dash-grid.bento-density-spacious { gap: 26px; }
+#view-dashboard .dash-grid.bento-density-spacious .dash-card { padding: 30px 32px; }
+#view-dashboard .dash-grid.bento-density-spacious .box-title { font-size: 21px; }
+#view-dashboard .dash-grid.bento-density-spacious .compact-stats .counter { font-size: 34px; }
+#view-dashboard .dash-grid.bento-density-spacious .erm-total div { font-size: 46px; }
+
+/* ════════════════════════════════════════════════════════════════════════
+   CONTAINER QUERIES — every card reflows its internals to its own width
+   ════════════════════════════════════════════════════════════════════════ */
+/* Tracker: subject tiles 3 → 2 → 1 */
+@container card (max-width: 540px) {
+    .subject-card-group { grid-template-columns: 1fr 1fr; }
+    .subject-card-group .compact-subject-card:nth-child(3) { grid-column: 1 / -1; }
+}
+@container card (max-width: 420px) {
+    .compact-subject-card { padding: 12px 13px; gap: 8px; }
+    .compact-stats .counter { font-size: 22px; }
+    .compact-subject-card h4 { font-size: 12px; }
+}
+@container card (max-width: 340px) {
+    .subject-card-group { grid-template-columns: 1fr; }
+    .subject-card-group .compact-subject-card:nth-child(3) { grid-column: auto; }
+}
+/* ERM: progress + sparkline stack when narrow */
+@container card (max-width: 520px) { .erm-layout { grid-template-columns: 1fr; } }
+/* Momentum chart breathes with width */
+@container card (min-width: 760px) { #dynamic-graph { height: 220px; } }
+@container card (max-width: 380px) { #dynamic-graph { height: 148px; } }
+/* Decay legend compacts */
+@container card (max-width: 420px) {
+    .decay-legend { gap: 6px; }
+    .decay-legend .legend-chip { font-size: 9px; padding: 2px 7px; }
+}
+/* Heads stay legible when a card is squeezed */
+@container card (max-width: 360px) {
+    .dash-card-head .box-title { font-size: 15px; }
+    .dash-card-head .kicker { font-size: 9px; letter-spacing: 1.8px; }
+    .variance-card { padding: 10px 14px; }
+    .variance-card span.val { font-size: 20px; }
+}
+
+/* ── Hide the whole resize UI on phones (responsive stack governs) ───── */
+@media (max-width: 900px) { .bento-toolbar { display: none !important; } }
