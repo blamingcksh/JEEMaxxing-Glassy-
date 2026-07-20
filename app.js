@@ -6828,8 +6828,7 @@ const globalMathObserver = new MutationObserver(function (mutations) {
           '<span class="ck-timer-slot" id="ck-timer-slot"></span>' +
         '</div>' +
         '<div class="ck-utils" id="ck-utils"></div>' +
-      '</div>' +
-      '<div class="ck-ticker"><span id="ck-ticker-text">Lock in. Every question is a pull.</span></div>';
+      '</div>';
 
     hdr.classList.add('cockpit-active');
     hdr.appendChild(ck);
@@ -6923,18 +6922,6 @@ const globalMathObserver = new MutationObserver(function (mutations) {
       setT('ck-depth-tier', d.t); setW('ck-depth-fill', d.p);
       const df = $('ck-depth-fill'); if (df) df.style.background = d.c;
       const dt = $('ck-depth-tier'); if (dt) dt.style.color = d.c;
-
-      // anticipation ticker
-      const now = performance.now();
-      const lines = [];
-      lines.push(CK.combo >= 2 ? ('🔥 Combo ×' + CK.combo + ' — one slip breaks it') : 'Land 2 in a row to ignite a combo');
-      lines.push(CK.critPrimed ? '⚡ CRIT PRIMED — next clutch detonates + 🛡' : ('⚡ ' + (100 - Math.floor(CK.crit)) + '% to a guaranteed CRIT'));
-      lines.push(CK.shields > 0 ? ('🛡 ' + CK.shields + ' shield' + (CK.shields > 1 ? 's' : '') + ' will absorb a slip') : 'Earn a 🛡 every 5-combo');
-      lines.push(xpLabel.indexOf('pts') >= 0 ? ('▲ ' + xpLabel) : ('🏆 ' + tier.name));
-      const tgt = (AppState.activeTargets || baseTargets || {});
-      lines.push('🎯 ' + totalSolved() + '/' + ((tgt.physics || 0) + (tgt.chemistry || 0) + (tgt.maths || 0)) + ' daily loop');
-      if (now - CK.tickerAt > 3500) { CK.tickerAt = now; CK.tickerIdx = (CK.tickerIdx + 1) % lines.length; }
-      setT('ck-ticker-text', lines[CK.tickerIdx % lines.length]);
     } catch (e) { /* never break the app */ }
   }
 
