@@ -288,7 +288,10 @@ export async function switchTab(viewId, element) {
         renderErrorResolutionDashboard(); // NEW: refresh error dashboard when viewing errors
         if (typeof renderMomentumCandles === 'function') renderMomentumCandles();
     }
-    if (viewId === 'dashboard') await renderGraph();
+    if (viewId === 'dashboard') {
+        await renderGraph();
+        try { renderChapterDecayGrid(); } catch (_) {}
+    }
     // ── P2P Leaderboard: re-sync the arena grid when the tab is shown ──
     if (viewId === 'leaderboard' && typeof LeaderboardNet !== 'undefined') {
         LeaderboardNet.refresh();
@@ -626,6 +629,7 @@ export async function updateUI() {
     // monitors + deficit lockdown protocol). Runs on every updateUI tick so
     // the dashboard always reflects the live rating state. ──
     try { renderEloMatrix(); } catch (_) { /* never block updateUI */ }
+    try { renderChapterDecayGrid(); } catch (_) { /* never block updateUI */ }
 
     updateStreakDisplay();
 }
@@ -4237,6 +4241,7 @@ export function confirmErrorLog() {
     alert("Logged to the Vault. Error archived.");
     closeModalStr('error-reason-modal');
     renderErrorMatrixFromBank();
+    try { renderChapterDecayGrid(); } catch (_) {}
     renderPracticeQuestionModal();
 }
 
