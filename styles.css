@@ -4072,3 +4072,57 @@ body.bento-dragging { user-select: none; -webkit-user-select: none; cursor: ew-r
 
 /* ── Hide the whole resize UI on phones (responsive stack governs) ───── */
 @media (max-width: 900px) { .bento-toolbar { display: none !important; } }
+
+/* ════════════════════════════════════════════════════════════════════════
+   BENTO RESIZE · add-ons — vertical drag + reorder grip + scroll layer.
+   Append to the END of styles.css (after the earlier BENTO RESIZE block).
+   The internal scroll wrapper (.bento-scroll) is injected by JS ONLY when a
+   card is given a fixed vertical height, so the default layout is unchanged.
+   ════════════════════════════════════════════════════════════════════════ */
+
+/* ── Vertical resize handle (bottom edge) — visible in Edit mode only ── */
+.bento-handle-v {
+    position: absolute; left: 14px; right: 14px; bottom: -4px; height: 12px;
+    display: flex; align-items: center; justify-content: center;
+    cursor: ns-resize; touch-action: none; z-index: 6;
+    opacity: 0; pointer-events: none; transition: opacity .2s ease;
+}
+.bento-handle-v::before {
+    content: ''; width: 40px; height: 4px; border-radius: 4px;
+    background: rgba(255,255,255,.16); box-shadow: 0 0 0 1px rgba(0,0,0,.35);
+    transition: background .15s ease, width .15s ease, box-shadow .15s ease;
+}
+.bento-handle-v:hover::before, .bento-handle-v:focus-visible::before {
+    background: var(--glow-orange, #f97316); width: 64px;
+    box-shadow: 0 0 16px rgba(249,115,22,.65);
+}
+#view-dashboard.bento-edit .bento-handle-v { opacity: 1; pointer-events: auto; }
+
+/* ── Scroll layer (created by JS only when a vertical height is set) ─── */
+.bento-scroll {
+    height: auto; overflow: auto; min-height: 0;
+    border-radius: 10px; padding-right: 4px;
+    scrollbar-width: thin; scrollbar-color: rgba(249,115,22,.4) transparent;
+}
+.bento-scroll::-webkit-scrollbar { width: 8px; }
+.bento-scroll::-webkit-scrollbar-track { background: transparent; }
+.bento-scroll::-webkit-scrollbar-thumb { background: rgba(249,115,22,.35); border-radius: 8px; }
+.bento-scroll::-webkit-scrollbar-thumb:hover { background: rgba(249,115,22,.6); }
+/* faint bottom fade so a clipped card reads as "scrollable", not "broken" */
+.dash-card.bento-vset::after {
+    content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: 26px;
+    pointer-events: none; border-radius: 0 0 22px 22px;
+    background: linear-gradient(180deg, rgba(0,0,0,0), rgba(8,9,13,.55));
+    opacity: 0; transition: opacity .2s ease;
+}
+.dash-card.bento-vset.bento-overflowing::after { opacity: 1; }
+
+/* ── Reorder grip (sits in the per-card control cluster, Edit mode) ──── */
+.bento-ctrl-btn { touch-action: none; }
+.bento-ctrl-grip { cursor: grab; }
+.bento-ctrl-grip:active { cursor: grabbing; }
+
+/* ── Shared drag feedback ─────────────────────────────────────────────── */
+body.bento-dragging { user-select: none; -webkit-user-select: none; }
+body.bento-dragging .dash-card { transform: none !important; }   /* kill hover lift mid-drag */
+.dash-card.bento-drag-target { opacity: .9; }
