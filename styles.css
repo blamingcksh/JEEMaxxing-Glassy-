@@ -4050,3 +4050,33 @@ body.bento-dragging #view-dashboard .dash-grid { transition: none !important; }
     .bento-toolbar { display: none !important; }
     #view-dashboard .dash-card { grid-column: 1 / -1 !important; }   /* beats any leftover inline span */
 }
+
+/* ════════════════════════════════════════════════════════════════════════
+   BENTO FIX PASS — (a) stop vertical drag stretching the row-neighbour,
+   (b) keep card colours/gradient-edge alive during a drag. Append-only:
+   the higher-specificity dragging selectors below out-rank the earlier
+   `body.bento-dragging #view-dashboard .dash-card { background:… }` rule,
+   so the premium glass + the tracker's animated conic edge never flatten.
+   ════════════════════════════════════════════════════════════════════════ */
+
+/* (a) Each card hugs its OWN height → a resized card no longer forces the
+       card sharing its grid row to stretch to match. */
+#view-dashboard .dash-grid { align-items: start; }
+
+/* (b) Re-declare the real surfaces while dragging, under a selector that
+       beats the flat-background drag rule (1,3,1 > 1,2,1). backdrop-filter
+       is still killed by the earlier rule (that's the only real perf cost),
+       so dragging stays smooth — only the cheap gradient fill is restored. */
+body.bento-dragging #view-dashboard .dash-card.dash-card {
+    background: var(--aes-glass, linear-gradient(180deg, rgba(255,255,255,.055), rgba(255,255,255,.018))) !important;
+}
+/* Tracker keeps its signature animated gradient frame mid-drag. Placed after
+   the generic rule above so it wins for the tracker card (equal specificity,
+   later source order). The --aes-angle animation is untouched, so it spins. */
+body.bento-dragging #view-dashboard .dash-card.dash-card-tracker {
+    background:
+        linear-gradient(180deg, rgba(20,22,32,.78), rgba(11,13,20,.82)) padding-box,
+        conic-gradient(from var(--aes-angle, 0deg),
+            var(--aes-amber,#ffb224), var(--aes-cyan,#3ddcff),
+            var(--aes-violet,#a78bfa), var(--aes-amber,#ffb224)) border-box !important;
+}

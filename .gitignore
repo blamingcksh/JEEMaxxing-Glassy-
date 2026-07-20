@@ -22,7 +22,7 @@ target/
 .mypy_cache/
 .pytest_cache/
 
-# Editor/IDE files
+# Editors and IDEs
 .vscode/
 .idea/
 *.swp
