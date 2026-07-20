@@ -891,27 +891,75 @@ window.setMatrixSearch = function (value) {
      Gated to >=901px for sizes; order applies at all widths.
      ════════════════════════════════════════════════════════════════════════ -->
 <script type="module">
+/* ════════════════════════════════════════════════════════════════════════
+   BENTO RESIZE CONTROLLER v3
+   Fixes: (1) persistence — only save widths/heights YOU set, write on every
+   change + on tab-close, re-assert after first paint; (2) smoothness —
+   body.bento-dragging kills backdrop-filter/transitions, rAF-throttled
+   reorder, pointer-events:none ghost. Layout prefs stay in localStorage
+   (device-local); storage.js / cloud sync are intentionally untouched.
+   ════════════════════════════════════════════════════════════════════════ */
 (function () {
     const LS = 'jeemax_bento_layout';
-    const BP = 901;
+    const BP = 901;                       // resize is a wide-screen feature
     const V_MIN = 140, V_MAX = 1600;
     const IDS = ['tracker', 'momentum', 'bounty', 'decay'];
 
-    const wide   = () => window.matchMedia(`(min-width: ${BP}px)`).matches;
-    const clamp  = (n, lo, hi) => Math.max(lo, Math.min(hi, n));
-    const editing= () => { const d = document.getElementById('view-dashboard'); return d && d.classList.contains('bento-edit'); };
-    const gridOf = () => document.querySelector('#view-dashboard .dash-grid');
+    const wide    = () => window.matchMedia(`(min-width: ${BP}px)`).matches;
+    const clamp   = (n, lo, hi) => Math.max(lo, Math.min(hi, n));
+    const editing = () => { const d = document.getElementById('view-dashboard'); return d && d.classList.contains('bento-edit'); };
+    const gridOf  = () => document.querySelector('#view-dashboard .dash-grid');
     const cardById = id => document.querySelector(`#view-dashboard .dash-card-${id}`);
     const idOf = card => IDS.find(k => card.classList.contains('dash-card-' + k));
     function ready(fn){ if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', fn); else fn(); }
     function load(){ try { return JSON.parse(localStorage.getItem(LS)) || {}; } catch (e) { return {}; } }
     function save(o){ try { localStorage.setItem(LS, JSON.stringify(o)); } catch (e) {} }
 
+    // A card "has a user-set width" only when it carries an inline grid-column.
+    // Reading the *computed* span (the v2 mistake) froze untouched cards to a
+    // stale auto-layout value → "size changes after refresh".
+    const hasInlineSpan = c => c.style.getPropertyValue('grid-column').trim() !== '';
     function spanOf(card){ const s = getComputedStyle(card); const n = parseInt(s.gridColumnEnd,10) - parseInt(s.gridColumnStart,10); return (n > 0 && n <= 12) ? n : 6; }
-    function setSpan(card, n){ card.style.gridColumn = 'span ' + clamp(n, 3, 12); }
-    function clearSpan(card){ card.style.gridColumn = ''; }
+    function setSpan(card, n){ card.style.setProperty('grid-column', 'span ' + clamp(n, 3, 12), 'important'); }
+    function clearSpan(card){ card.style.removeProperty('grid-column'); }
 
-    // Debounced crisp re-render of charts at the FINAL size only.
+    // Vertical scroll layer (created only when a fixed height is set).
+    const isInjected = el => el.classList && (el.classList.contains('bento-handle') || el.classList.contains('bento-handle-v') || el.classList.contains('bento-card-ctrls'));
+    function ensureWrap(card){
+        if (card._bentoScroll) return card._bentoScroll;
+        const w = document.createElement('div'); w.className = 'bento-scroll';
+        [...card.childNodes].filter(n => !(n.nodeType === 1 && isInjected(n))).forEach(n => w.appendChild(n));
+        card.appendChild(w); card._bentoScroll = w; card.classList.add('bento-vset');
+        wireOverflowHint(card, w);
+        return w;
+    }
+    function clearWrap(card){
+        const w = card._bentoScroll; if (!w) return;
+        const ref = [...card.children].find(isInjected);
+        [...w.childNodes].forEach(n => { if (ref) card.insertBefore(n, ref); else card.appendChild(n); });
+        w.remove(); card._bentoScroll = null; card.classList.remove('bento-vset', 'bento-overflowing');
+    }
+    function wireOverflowHint(card, w){
+        if (w._ro) return;
+        const check = () => card.classList.toggle('bento-overflowing', w.scrollHeight > w.clientHeight + 2);
+        w._ro = new ResizeObserver(check); w._ro.observe(w);
+        w.addEventListener('scroll', check, { passive: true }); requestAnimationFrame(check);
+    }
+
+    // ── ONE unified writer — spans + heights + order, consistent, never torn ──
+    function persistAll(){
+        const o = load(); o.spans = o.spans || {}; o.heights = o.heights || {};
+        IDS.forEach(id => {
+            const c = cardById(id); if (!c) return;
+            if (hasInlineSpan(c)) o.spans[id] = spanOf(c); else delete o.spans[id];   // only lock what YOU set
+            if (c._bentoScroll) { const h = parseInt(c._bentoScroll.style.height, 10); if (h > 0) o.heights[id] = h; else delete o.heights[id]; }
+            else delete o.heights[id];
+        });
+        const g = gridOf(); if (g) o.order = [...g.children].map(idOf).filter(Boolean);
+        save(o);
+    }
+
+    // Crisp chart re-render, debounced to the FINAL size only.
     let settleT = 0;
     function settle(){
         clearTimeout(settleT);
@@ -922,84 +970,44 @@ window.setMatrixSearch = function (value) {
         }, 180);
     }
 
-    function persistSpans(){ const o = load(); o.spans = o.spans || {}; IDS.forEach(id => { const c = cardById(id); if (c) o.spans[id] = spanOf(c); }); save(o); }
-    function persistHeights(){
-        const o = load(); o.heights = o.heights || {};
-        IDS.forEach(id => {
-            const c = cardById(id);
-            if (c && c._bentoScroll) { const h = parseInt(c._bentoScroll.style.height, 10); if (h > 0) o.heights[id] = h; else delete o.heights[id]; }
-            else if (o.heights) delete o.heights[id];
-        });
-        save(o);
-    }
-    function persistOrder(){ const o = load(); const g = gridOf(); if (g) o.order = [...g.children].map(idOf).filter(Boolean); save(o); }
-
-    // ── Vertical scroll layer (only exists while a card has a fixed height) ──
-    const isInjected = el => el.classList && (el.classList.contains('bento-handle') || el.classList.contains('bento-handle-v') || el.classList.contains('bento-card-ctrls'));
-    function ensureWrap(card){
-        if (card._bentoScroll) return card._bentoScroll;
-        const w = document.createElement('div'); w.className = 'bento-scroll';
-        const kids = [...card.childNodes].filter(n => !(n.nodeType === 1 && isInjected(n)));
-        kids.forEach(n => w.appendChild(n));
-        card.appendChild(w); card._bentoScroll = w; card.classList.add('bento-vset');
-        wireOverflowHint(card, w);
-        return w;
-    }
-    function clearWrap(card){
-        const w = card._bentoScroll; if (!w) return;
-        const kids = [...w.childNodes];
-        const ref = [...card.children].find(isInjected);
-        kids.forEach(n => { if (ref) card.insertBefore(n, ref); else card.appendChild(n); });
-        w.remove(); card._bentoScroll = null;
-        card.classList.remove('bento-vset', 'bento-overflowing');
-    }
-    // Show the bottom fade only when content actually overflows the fixed height.
-    function wireOverflowHint(card, w){
-        if (w._ro) return;
-        const check = () => card.classList.toggle('bento-overflowing', w.scrollHeight > w.clientHeight + 2);
-        w._ro = new ResizeObserver(check); w._ro.observe(w);
-        w.addEventListener('scroll', check, { passive: true });
-        requestAnimationFrame(check);
-    }
-
     // ── Toolbar ──────────────────────────────────────────────────────────
     function buildToolbar(dash){
         const tb = document.createElement('div'); tb.className = 'bento-toolbar';
         tb.innerHTML = `
             <span class="bt-label">Layout</span>
             <div class="bento-seg" data-bento-density>
-                <button data-d="compact">Compact</button>
-                <button data-d="cozy" class="active">Cozy</button>
-                <button data-d="spacious">Spacious</button>
+                <button type="button" data-d="compact">Compact</button>
+                <button type="button" data-d="cozy" class="active">Cozy</button>
+                <button type="button" data-d="spacious">Spacious</button>
             </div>
-            <button class="bento-edit-btn" data-bento-edit>✛ Resize</button>
-            <button class="bento-reset-btn" data-bento-reset>↺ Reset</button>
-            <span class="bento-hint">Drag right edge = width · bottom edge = height (dbl‑click = fit) · ⠿ = drag to reorder · auto‑saved</span>`;
+            <button type="button" class="bento-edit-btn" data-bento-edit>✛ Resize</button>
+            <button type="button" class="bento-reset-btn" data-bento-reset>↺ Reset</button>
+            <span class="bento-hint">Right edge = width · bottom edge = height (dbl‑click = fit) · ⠿ = reorder · auto‑saved</span>`;
         dash.insertBefore(tb, dash.firstChild);
 
-        const o = load(); const grid = gridOf();
+        const grid = gridOf();
         const applyDensity = d => {
             grid.classList.remove('bento-density-compact','bento-density-cozy','bento-density-spacious');
             if (d && d !== 'cozy') grid.classList.add('bento-density-' + d);
             tb.querySelectorAll('[data-d]').forEach(b => b.classList.toggle('active', b.dataset.d === d));
             const s = load(); s.density = d; save(s); settle();
         };
-        applyDensity(o.density || 'cozy');
+        applyDensity((load().density) || 'cozy');
         tb.querySelector('[data-bento-density]').addEventListener('click', e => { const b = e.target.closest('[data-d]'); if (b) applyDensity(b.dataset.d); });
 
         const editBtn = tb.querySelector('[data-bento-edit]');
         editBtn.addEventListener('click', () => { const on = dash.classList.toggle('bento-edit'); editBtn.classList.toggle('active', on); });
 
         tb.querySelector('[data-bento-reset]').addEventListener('click', () => {
-            IDS.forEach(id => { const c = cardById(id); if (c) { clearSpan(c); clearWrap(c); delete c.dataset.bentoPrev; } });
+            IDS.forEach(id => { const c = cardById(id); if (c) { clearSpan(c); clearWrap(c); delete c.dataset.bentoPrevSpan; } });
             IDS.forEach(id => { const c = cardById(id); if (c) grid.appendChild(c); });   // default order
-            save({ density: (load().density || 'cozy') });
+            persistAll();   // records empty spans/heights + default order
             settle();
         });
         return tb;
     }
 
-    // ── Per-card handles + controls ──────────────────────────────────────
+    // ── Per-card handles + grip + focus ──────────────────────────────────
     function equipCard(card){
         if (card.dataset.bentoEquip) return; card.dataset.bentoEquip = '1';
 
@@ -1008,9 +1016,14 @@ window.setMatrixSearch = function (value) {
         const focus = document.createElement('button'); focus.className = 'bento-ctrl-btn'; focus.type = 'button'; focus.title = 'Expand / restore width'; focus.textContent = '⤢';
         focus.addEventListener('click', () => {
             const cur = spanOf(card);
-            if (cur >= 12) setSpan(card, parseInt(card.dataset.bentoPrev || '6', 10));
-            else { card.dataset.bentoPrev = String(cur); setSpan(card, 12); }
-            persistSpans(); settle();
+            if (cur >= 12) {
+                const prev = card.dataset.bentoPrevSpan;
+                if (prev === 'auto' || prev === undefined) clearSpan(card); else setSpan(card, parseInt(prev, 10));
+            } else {
+                card.dataset.bentoPrevSpan = hasInlineSpan(card) ? String(cur) : 'auto';
+                setSpan(card, 12);
+            }
+            persistAll(); settle();
         });
         ctrls.appendChild(grip); ctrls.appendChild(focus); card.appendChild(ctrls);
 
@@ -1019,26 +1032,23 @@ window.setMatrixSearch = function (value) {
         handle.setAttribute('role','slider'); handle.setAttribute('aria-label','Resize card width'); card.appendChild(handle);
         handle.addEventListener('pointerdown', e => {
             if (!editing()) return; e.preventDefault();
-            const dashEl = document.getElementById('view-dashboard'); const grid = gridOf();
-            const colW = grid.getBoundingClientRect().width / 12; const start = spanOf(card); const x0 = e.clientX; let cur = start;
-            grid.classList.add('bento-dragging'); card.classList.add('bento-drag-target');
-            document.body.classList.add('bento-dragging'); document.body.style.cursor = 'ew-resize';
+            const grid = gridOf();
+            const colW = grid.getBoundingClientRect().width / 12;     // cache ONCE per drag
+            const start = spanOf(card), x0 = e.clientX; let cur = start;
+            document.body.classList.add('bento-dragging'); card.classList.add('bento-drag-target');
             try { handle.setPointerCapture(e.pointerId); } catch (_) {}
-            handle.setAttribute('aria-valuenow', cur);
-            const move = ev => { const ns = clamp(start + Math.round((ev.clientX - x0) / colW), 3, 12); if (ns !== cur) { cur = ns; setSpan(card, ns); handle.setAttribute('aria-valuenow', ns); } };
+            const move = ev => { const ns = clamp(start + Math.round((ev.clientX - x0) / colW), 3, 12); if (ns !== cur) { cur = ns; setSpan(card, ns); } };
             const up = ev => {
                 try { handle.releasePointerCapture(ev.pointerId); } catch (_) {}
                 handle.removeEventListener('pointermove', move); handle.removeEventListener('pointerup', up); handle.removeEventListener('pointercancel', up);
-                grid.classList.remove('bento-dragging'); card.classList.remove('bento-drag-target');
-                document.body.classList.remove('bento-dragging'); document.body.style.cursor = '';
-                persistSpans(); settle();
+                document.body.classList.remove('bento-dragging'); card.classList.remove('bento-drag-target');
+                persistAll(); settle();
             };
             handle.addEventListener('pointermove', move); handle.addEventListener('pointerup', up); handle.addEventListener('pointercancel', up);
         });
         handle.addEventListener('keydown', e => {
-            if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return; e.preventDefault();
-            const ns = clamp(spanOf(card) + (e.key === 'ArrowRight' ? 1 : -1), 3, 12);
-            setSpan(card, ns); handle.setAttribute('aria-valuenow', ns); persistSpans(); settle();
+            if (!editing() || (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight')) return; e.preventDefault();
+            setSpan(card, spanOf(card) + (e.key === 'ArrowRight' ? 1 : -1)); persistAll(); settle();
         });
 
         // Vertical handle (bottom edge)
@@ -1046,83 +1056,97 @@ window.setMatrixSearch = function (value) {
         handleV.setAttribute('role','slider'); handleV.setAttribute('aria-label','Resize card height'); card.appendChild(handleV);
         handleV.addEventListener('pointerdown', e => {
             if (!editing()) return; e.preventDefault(); e.stopPropagation();
-            const dashEl = document.getElementById('view-dashboard');
             const cs = getComputedStyle(card); const vpad = (parseFloat(cs.paddingTop)||0) + (parseFloat(cs.paddingBottom)||0);
-            const startH = card.getBoundingClientRect().height; const y0 = e.clientY; const w = ensureWrap(card);
-            card.classList.add('bento-drag-target'); document.body.classList.add('bento-dragging'); document.body.style.cursor = 'ns-resize';
+            const startH = card.getBoundingClientRect().height, y0 = e.clientY; const w = ensureWrap(card);
+            document.body.classList.add('bento-dragging'); card.classList.add('bento-drag-target');
             try { handleV.setPointerCapture(e.pointerId); } catch (_) {}
             const move = ev => { w.style.height = Math.max(40, clamp(startH + (ev.clientY - y0), V_MIN, V_MAX) - vpad) + 'px'; };
             const up = ev => {
                 try { handleV.releasePointerCapture(ev.pointerId); } catch (_) {}
                 handleV.removeEventListener('pointermove', move); handleV.removeEventListener('pointerup', up); handleV.removeEventListener('pointercancel', up);
-                card.classList.remove('bento-drag-target'); document.body.classList.remove('bento-dragging'); document.body.style.cursor = '';
-                persistHeights(); settle();
+                document.body.classList.remove('bento-dragging'); card.classList.remove('bento-drag-target');
+                persistAll(); settle();
             };
             handleV.addEventListener('pointermove', move); handleV.addEventListener('pointerup', up); handleV.addEventListener('pointercancel', up);
         });
-        handleV.addEventListener('dblclick', () => { if (!editing()) return; clearWrap(card); persistHeights(); settle(); });
+        handleV.addEventListener('dblclick', () => { if (!editing()) return; clearWrap(card); persistAll(); settle(); });
 
-        // Reorder grip (drag the whole card up/down)
+        // Reorder grip (drag the whole card up / down / into any slot)
         grip.addEventListener('pointerdown', e => {
             if (!editing()) return; e.preventDefault(); e.stopPropagation();
-            const grid = gridOf(); let dragged = card; let lastTarget = null, lastBefore = null;
+            const grid = gridOf(); let dragged = card, lastTarget = null, lastBefore = null, raf = 0, lastEv = e;
             try { grip.setPointerCapture(e.pointerId); } catch (_) {}
-            card.style.pointerEvents = 'none'; card.classList.add('bento-drag-target');
-            document.body.classList.add('bento-dragging'); document.body.style.cursor = 'grabbing';
-            const move = ev => {
-                const el = document.elementFromPoint(ev.clientX, ev.clientY);
-                const t = el && el.closest ? el.closest('.dash-card') : null;
-                if (!t || t === dragged) return;
-                const r = t.getBoundingClientRect(); const before = ev.clientY < r.top + r.height / 2;
-                if (t === lastTarget && before === lastBefore) return;
-                lastTarget = t; lastBefore = before;
-                if (before) grid.insertBefore(dragged, t); else grid.insertBefore(dragged, t.nextSibling);
+            card.style.pointerEvents = 'none';                 // ghost: elementFromPoint sees the card beneath
+            card.classList.add('bento-drag-target'); document.body.classList.add('bento-dragging');
+            const move = ev => {                                // rAF-throttled → one DOM move per frame
+                lastEv = ev; if (raf) return;
+                raf = requestAnimationFrame(() => {
+                    raf = 0;
+                    const el = document.elementFromPoint(lastEv.clientX, lastEv.clientY);
+                    const t = el && el.closest ? el.closest('.dash-card') : null;
+                    if (!t || t === dragged) return;
+                    const r = t.getBoundingClientRect(); const before = lastEv.clientY < r.top + r.height / 2;
+                    if (t === lastTarget && before === lastBefore) return;
+                    lastTarget = t; lastBefore = before;
+                    grid.insertBefore(dragged, before ? t : t.nextSibling);   // physical reflow, but blur is OFF now
+                });
             };
             const up = ev => {
+                if (raf) { cancelAnimationFrame(raf); raf = 0; }
                 try { grip.releasePointerCapture(ev.pointerId); } catch (_) {}
                 grip.removeEventListener('pointermove', move); grip.removeEventListener('pointerup', up); grip.removeEventListener('pointercancel', up);
-                card.style.pointerEvents = ''; card.classList.remove('bento-drag-target');
-                document.body.classList.remove('bento-dragging'); document.body.style.cursor = '';
-                dragged = null; persistOrder(); settle();
+                card.style.pointerEvents = ''; card.classList.remove('bento-drag-target'); document.body.classList.remove('bento-dragging');
+                dragged = null; persistAll(); settle();
             };
             grip.addEventListener('pointermove', move); grip.addEventListener('pointerup', up); grip.addEventListener('pointercancel', up);
         });
     }
 
-    // ── Apply saved layout on boot / breakpoint change ───────────────────
+    // ── Apply saved layout (order → widths → heights), with re-assert ────
     function applySaved(){
+        if (document.body.classList.contains('bento-dragging')) return;   // never fight an active drag
         const o = load(); const grid = gridOf(); if (!grid) return;
-        // Order (all widths)
         if (Array.isArray(o.order) && o.order.length) {
             const seen = new Set();
             o.order.forEach(id => { const c = cardById(id); if (c) { grid.appendChild(c); seen.add(id); } });
             IDS.forEach(id => { if (!seen.has(id)) { const c = cardById(id); if (c) grid.appendChild(c); } });
         }
-        // Sizes (wide screens only)
         const spans = o.spans || {}, heights = o.heights || {};
         IDS.forEach(id => {
             const c = cardById(id); if (!c) return;
-            if (wide() && spans[id]) setSpan(c, spans[id]); else clearSpan(c);
-            if (wide() && heights[id]) { const w = ensureWrap(c); w.style.height = heights[id] + 'px'; } else clearWrap(c);
+            if (wide() && typeof spans[id] === 'number') setSpan(c, spans[id]); else clearSpan(c);
+            if (wide() && heights[id]) { ensureWrap(c).style.height = heights[id] + 'px'; } else clearWrap(c);
         });
     }
 
-    // Re-render the decay grid whenever its (possibly scrolled) width settles.
+    // Re-render decay grid on width settle — but NOT mid-drag (cheap stretch instead).
     function watchDecayWidth(){
         const box = document.getElementById('chapter-decay-grid'); if (!box || !('ResizeObserver' in window)) return;
         let t = 0;
-        new ResizeObserver(() => { clearTimeout(t); t = setTimeout(() => { try { if (typeof window.renderChapterDecayGrid === 'function') window.renderChapterDecayGrid(); } catch (e) {} }, 160); }).observe(box);
+        new ResizeObserver(() => {
+            if (document.body.classList.contains('bento-dragging')) return;
+            clearTimeout(t); t = setTimeout(() => { try { if (typeof window.renderChapterDecayGrid === 'function') window.renderChapterDecayGrid(); } catch (e) {} }, 160);
+        }).observe(box);
     }
 
-    ready(() => {
+    function boot(){
         const dash = document.getElementById('view-dashboard'); if (!dash || dash.dataset.bentoInit) return; dash.dataset.bentoInit = '1';
         buildToolbar(dash);
         IDS.forEach(id => { const c = cardById(id); if (c) equipCard(c); });
         applySaved();
         watchDecayWidth();
+        // Re-assert after the grid's first paint + a safety timeout (kills the load race
+        // that previously let a themed default overwrite a restored span for one frame).
+        requestAnimationFrame(() => requestAnimationFrame(applySaved));
+        setTimeout(applySaved, 150);
+        // Re-apply on viewport crossing the breakpoint (rotate / resize).
         window.matchMedia(`(min-width: ${BP}px)`).addEventListener('change', applySaved);
+        // Belt-and-braces persistence: never lose an edit to a closed/hidden tab.
+        window.addEventListener('beforeunload', persistAll);
+        document.addEventListener('visibilitychange', () => { if (document.hidden) persistAll(); });
         requestAnimationFrame(settle);
-    });
+    }
+    ready(boot);
 })();
 </script>
 
