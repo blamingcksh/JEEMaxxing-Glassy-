@@ -4208,6 +4208,89 @@ body.bento-dragging #view-dashboard .dash-card.dash-card-tracker {
 
 @media (max-width: 560px) {
   .ck-row.ck-top { gap: 10px; }
+   /* ════════════════════════════════════════════════════════════════════════
+   FIX PASS — sidebar loop-card overflow · collapsed-rail text wrap ·
+   reward-badge placement · cockpit CRIT legibility.
+   Append to the END of styles.css. Reversible: delete this block.
+   No JS / DOM / index.html changes — restyles the nodes the cockpit +
+   loop-rail engine already injects.
+   ════════════════════════════════════════════════════════════════════════ */
+
+/* ── 1. The sidebar must NEVER silently clip its tail (profile / MMR /
+        Shrink). The new loop card pushed total height past 100vh and
+        overflow:hidden was cutting the bottom off — that was the
+        "hidden text". Let the nav column shrink, and allow a subtle
+        vertical scroll as a safety net so nothing is ever lost. ─────── */
+#sidebar, .sidebar { overflow-x: hidden; overflow-y: auto; }
+.sidebar .nav-menu { min-height: 0; }   /* lets the flex child shrink instead of forcing overflow */
+/* quiet scrollbar so the safety-net scroll never looks jarring */
+.sidebar { scrollbar-width: thin; scrollbar-color: rgba(255,255,255,.12) transparent; }
+.sidebar::-webkit-scrollbar { width: 6px; }
+.sidebar::-webkit-scrollbar-track { background: transparent; }
+.sidebar::-webkit-scrollbar-thumb { background: rgba(255,255,255,.12); border-radius: 3px; }
+.sidebar::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,.22); }
+
+/* ── 2. Compact the loop card so it stops eating vertical space and
+        pushing the profile below the fold on normal laptop heights. ─── */
+.nav-ck-loop { padding: 10px 12px; margin: 0 0 14px; }
+.nav-ck-loop-title {
+    display: flex; flex-direction: column; gap: 2px; min-width: 0;
+    font-size: 9px; margin-bottom: 8px; line-height: 1.3;
+}
+.nav-ck-risk {
+    display: block; min-width: 0;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    font-size: 8.5px;
+}
+.nav-ck-arcs { gap: 4px; }
+.nav-ck-ring { width: 34px; height: 34px; }
+.nav-ck-ring .ck-ring-hole { width: 24px; height: 24px; }
+.nav-ck-arc-lbl { font-size: 10px; }
+
+/* ── 3. COLLAPSED rail: the loop card can't live in an 80px rail without
+        its text wrapping into a vertical word-stack (the "text issues").
+        Hide the whole card when collapsed — the streak-at-risk RED RAIL
+        TINT (ck-streak-danger on #sidebar) still fires, so the open-loop
+        tension signal survives without any wrapping text. The tier ladder
+        is also hidden: it cannot fit inside the 48px avatar circle. ──── */
+.sidebar.collapsed .nav-ck-loop  { display: none; }
+.sidebar.collapsed .nav-ck-ladder { display: none; }
+
+/* ── 4. Reward badge (the "12"): pin it cleanly in both modes so it never
+        overflows the rail or floats off-edge (part of the "scroll thing"). */
+.nav-item { position: relative; }
+.nav-ck-badge {
+    position: absolute; top: 6px; right: 8px;
+    min-width: 16px; height: 16px; padding: 0 4px;
+    pointer-events: none;
+}
+.sidebar.collapsed .nav-ck-badge {
+    top: 4px; right: 10px; min-width: 14px; height: 14px;
+    font-size: 8px; padding: 0 3px;
+}
+/* live beacon dot in collapsed mode: tuck it at the icon's top-left,
+   not hanging off the rail edge */
+.sidebar.collapsed .nav-ck-beacon {
+    position: absolute; top: 6px; left: 12px; margin: 0;
+}
+
+/* ── 5. Cockpit: the CRIT meter under the COMBO ring was clipping and its
+        label was invisible (mix-blend-mode:screen hid the glyphs — that
+        was the cut-off cyan sliver). Give it a real track + legible text. */
+.ck-top { flex-wrap: wrap; row-gap: 8px; }     /* wrap gracefully on narrow modals */
+.ck-combo { gap: 6px; min-width: 64px; }
+.ck-crit {
+    width: 64px; height: 7px; overflow: visible;
+    background: rgba(255,255,255,.08);          /* visible empty track */
+}
+.ck-crit-lbl {
+    mix-blend-mode: normal;                     /* was hiding the text */
+    color: #cfe9ff; font-size: 7px; letter-spacing: .5px;
+    text-shadow: 0 1px 2px rgba(0,0,0,.85);
+}
+@media (max-width: 720px) {
+    .ck-utils { margin-left: 0; width: 100%; justify-content: flex-end; }
+}
   .ck-identity { min-width: 0; }
   .ck-xpbar { width: 84px; }
   .ck-utils { margin-left: 0; width: 100%; justify-content: flex-end; }
