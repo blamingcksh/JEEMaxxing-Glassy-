@@ -4080,3 +4080,17 @@ body.bento-dragging #view-dashboard .dash-card.dash-card-tracker {
             var(--aes-amber,#ffb224), var(--aes-cyan,#3ddcff),
             var(--aes-violet,#a78bfa), var(--aes-amber,#ffb224)) border-box !important;
 }
+
+/* ════════════════════════════════════════════════════════════════════════
+   BENTO MASONRY v5 — per-column vertical compaction.
+   The JS height-map packer sets grid-auto-rows:1px + row-gap:0 inline while
+   the dashboard is active, then pins each card's grid-row/grid-column so
+   columns compact independently (a shortened card lifts the one below it in
+   the SAME column; cards never jump sideways). This block only guarantees
+   cards never stretch to their grid track (stretching would feed the card's
+   own height back into the ResizeObserver and loop). Reversible: delete it.
+   ════════════════════════════════════════════════════════════════════════ */
+#view-dashboard .dash-card { align-self: start; }
+/* While a card is the live drag target, don't let the premium hover-lift
+   fight the repack (transform is fine, but keep it cheap mid-drag). */
+#view-dashboard .dash-card.bento-drag-target { transition: box-shadow .12s ease, border-color .12s ease; }

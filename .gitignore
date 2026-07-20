@@ -1,46 +1,46 @@
 ```gitignore
-# Compiled and binary files
+# Compiled and build artifacts
 *.pyc
-*.class
+__pycache__/
 *.o
+*.obj
+dist/
+build/
+*.class
 *.exe
 *.dll
 *.so
 *.a
-*.obj
 *.out
 
 # Dependencies
 node_modules/
 venv/
 .venv/
-__pycache__/
-dist/
-build/
-target/
-.gradle/
-.mypy_cache/
-.pytest_cache/
+.env
+.env.local
+.env.*
 
-# Editors and IDEs
-.vscode/
-.idea/
+# Logs and temporary files
+*.log
+*.tmp
 *.swp
 *.swo
-*.tmp
+
+# Editor/IDE files
+.vscode/
+.idea/
+*.pyc
+__pycache__/
+
+# Coverage reports
+coverage/
+htmlcov/
+.coverage
 
 # System files
 .DS_Store
 Thumbs.db
-.env
-.env.local
-*.env.*
-
-# Logs and coverage
-*.log
-coverage/
-htmlcov/
-.coverage
 
 # Compressed files
 *.zip
@@ -65,4 +65,141 @@ htmlcov/
 *.tar.bz2
 *.tar.xz
 *.tar.zst
+
+# Python specific
+*.pyc
+__pycache__/
+*.pyo
+*.pyd
+.Python
+*.so
+.Pytest_cache/
+.mypy_cache/
+.coverage
+
+# Java specific
+*.class
+*.jar
+*.war
+*.ear
+target/
+.gradle/
+build/
+
+# Node.js specific
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+node_modules/
+dist/
+build/
+
+# C/C++ specific
+*.o
+*.obj
+*.exe
+*.dll
+*.so
+*.a
+*.out
+*.bin
+*.objdir
+
+# Go specific
+*.o
+*.a
+*.so
+*.exe
+*.test
+*.prof
+vendor/
+
+# Ruby specific
+*.gem
+*.rbc
+.bundle/
+vendor/bundle/
+vendor/cache/
+vendor/gems/
+vendor/ruby/
+
+# Rust specific
+target/
+Cargo.lock
+*.rlib
+
+# Julia specific
+julia-*/
+
+# Zig specific
+zig*/
+
+# Gradle specific
+.gradle/
+build/
+
+# Maven specific
+target/
+pom.xml.tag
+pom.xml.releaseBackup
+dependency-reduced-pom.xml
+release.properties
+
+# Web specific
+.sass-cache/
+connect.lock
+.nyc_output/
+coverage/
+.nyc_output/
+istanbul.yml
+.webpack/
+.webpack-bundle-analyzer/
+
+# Testing
+*.log
+logs/
+*.log
+*.tmp
+tmp/
+*.swp
+*.swo
+
+# Environment variables
+.env
+.env.local
+.env.*
+!env.example
+!env.test
+
+# IDE
+.vscode/
+.idea/
+.settings/
+.project
+.classpath
+.c9/
+*.launch
+.pydevproject
+.metadata
+nbproject/
+nbbuild/
+nbdist/
+.nb-gradle/
+.DS_Store
+Thumbs.db
+ehthumbs.db
+Icon?
+.directory
+*.nfs*
+*~
+.#*
+.#
+*.~
+*#
+\#*#
+CVS/
+.git/
+.hg/
+.svn/
 ```

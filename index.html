@@ -895,35 +895,46 @@ window.setMatrixSearch = function (value) {
      ════════════════════════════════════════════════════════════════════════ -->
 <script type="module">
 /* ════════════════════════════════════════════════════════════════════════
-   BENTO RESIZE CONTROLLER v4 — persistence + drag-release hardened.
-   REPLACE the previous inline bento module with this. Drag move/release are
-   bound to `window` (not the thin handle) so the end-of-drag cleanup + the
-   localStorage write ALWAYS fire — fixing: refresh-reset, stuck/dead cards,
-   and the flattened tracker edge. A blur/tab-hide safety net force-ends any
-   orphaned drag and saves the last snapped size. Layout prefs stay device-
-   local in localStorage('jeemax_bento_layout'); storage.js / cloud untouched.
+   BENTO RESIZE CONTROLLER v5 — width + height + reorder + masonry packing.
+   REPLACES v4. Two fixes over v4:
+     (1) Widths persist correctly — stored as an exact integer the instant
+         they are set (dataset.bentoSpan); never re-read from computed style
+         (the v4 `parseInt("span N")` → NaN → fallback-6 bug is gone).
+     (2) Vertical compaction — a height-map packer pins each card to its own
+         column band and stacks each column from the top, so shortening a
+         card lifts the card below it in the SAME column (cards never jump
+         sideways). Driven by grid-auto-rows:1px + row-gap:0 (set inline
+         only while the dashboard is active & wide); cleared below 901px so
+         the responsive mobile stack is untouched.
+   Layout prefs stay device-local in localStorage('jeemax_bento_layout');
+   storage.js / cloud / IndexedDB are intentionally untouched.
    ════════════════════════════════════════════════════════════════════════ */
 (function () {
     const LS = 'jeemax_bento_layout';
-    const BP = 901;
+    const BP = 901;                       // resize / masonry is a wide-screen feature
+    const BP2 = 1101;                     // mirrors the themed 2-col ↔ 1-col breakpoint
     const V_MIN = 140, V_MAX = 1600;
+    const COLS = 12;
     const IDS = ['tracker', 'momentum', 'bounty', 'decay'];
 
-    const wide    = () => window.matchMedia(`(min-width: ${BP}px)`).matches;
-    const clamp   = (n, lo, hi) => Math.max(lo, Math.min(hi, n));
-    const editing = () => { const d = document.getElementById('view-dashboard'); return d && d.classList.contains('bento-edit'); };
-    const gridOf  = () => document.querySelector('#view-dashboard .dash-grid');
+    const wide     = () => window.matchMedia(`(min-width: ${BP}px)`).matches;
+    const twoCol   = () => window.matchMedia(`(min-width: ${BP2}px)`).matches;
+    const clamp    = (n, lo, hi) => Math.max(lo, Math.min(hi, n));
+    const editing  = () => { const d = document.getElementById('view-dashboard'); return d && d.classList.contains('bento-edit'); };
+    const dashActive = () => { const d = document.getElementById('view-dashboard'); return d && d.classList.contains('active'); };
+    const gridOf   = () => document.querySelector('#view-dashboard .dash-grid');
     const cardById = id => document.querySelector(`#view-dashboard .dash-card-${id}`);
-    const idOf = card => IDS.find(k => card.classList.contains('dash-card-' + k));
+    const idOf     = card => IDS.find(k => card.classList.contains('dash-card-' + k));
     function ready(fn){ if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', fn); else fn(); }
     function load(){ try { return JSON.parse(localStorage.getItem(LS)) || {}; } catch (e) { return {}; } }
     function save(o){ try { localStorage.setItem(LS, JSON.stringify(o)); } catch (e) {} }
 
-    const hasInlineSpan = c => c.style.getPropertyValue('grid-column').trim() !== '';
-    function spanOf(card){ const s = getComputedStyle(card); const n = parseInt(s.gridColumnEnd,10) - parseInt(s.gridColumnStart,10); return (n > 0 && n <= 12) ? n : 6; }
-    function setSpan(card, n){ card.style.setProperty('grid-column', 'span ' + clamp(n, 3, 12), 'important'); }
-    function clearSpan(card){ card.style.removeProperty('grid-column'); }
+    // The width a card SHOULD be right now: a user-set value wins, otherwise
+    // the themed responsive default (2 columns above 1100px, 1 below).
+    function defaultW(){ return twoCol() ? 6 : 12; }
+    function widthOf(card){ const v = parseInt(card.dataset.bentoSpan, 10); return clamp(Number.isFinite(v) ? v : defaultW(), 3, 12); }
 
+    // Vertical scroll layer (exists ONLY while a card has a fixed height).
     const isInjected = el => el.classList && (el.classList.contains('bento-handle') || el.classList.contains('bento-handle-v') || el.classList.contains('bento-card-ctrls'));
     function ensureWrap(card){
         if (card._bentoScroll) return card._bentoScroll;
@@ -946,12 +957,12 @@ window.setMatrixSearch = function (value) {
         w.addEventListener('scroll', check, { passive: true }); requestAnimationFrame(check);
     }
 
-    // ONE writer — spans + heights + order, consistent.
+    // ── ONE writer — widths + heights + order, consistent, never torn ──────
     function persistAll(){
         const o = load(); o.spans = o.spans || {}; o.heights = o.heights || {};
         IDS.forEach(id => {
             const c = cardById(id); if (!c) return;
-            if (hasInlineSpan(c)) o.spans[id] = spanOf(c); else delete o.spans[id];
+            if (c.dataset.bentoSpan) o.spans[id] = clamp(parseInt(c.dataset.bentoSpan, 10), 3, 12); else delete o.spans[id];
             if (c._bentoScroll) { const h = parseInt(c._bentoScroll.style.height, 10); if (h > 0) o.heights[id] = h; else delete o.heights[id]; }
             else delete o.heights[id];
         });
@@ -959,6 +970,7 @@ window.setMatrixSearch = function (value) {
         save(o);
     }
 
+    // Crisp chart re-render at the FINAL size only, then re-pack.
     let settleT = 0;
     function settle(){
         clearTimeout(settleT);
@@ -966,15 +978,82 @@ window.setMatrixSearch = function (value) {
             try { if (typeof window.renderGraph === 'function') window.renderGraph(); } catch (e) {}
             try { if (typeof window.renderMomentumCandles === 'function') window.renderMomentumCandles(); } catch (e) {}
             try { if (typeof window.renderChapterDecayGrid === 'function') window.renderChapterDecayGrid(); } catch (e) {}
+            scheduleRelayout();
         }, 180);
     }
 
-    // ── Drag engine: move + release bound to WINDOW so they cannot be lost. ──
-    // This is the fix for the missed-pointerup bug. No setPointerCapture — it
-    // is the unreliable piece. `window` always sees the release regardless of
-    // where the pointer is, whether capture held, or whether the handle is
-    // clipped by the card. _dragActive guards against orphaned listeners and
-    // lets the blur/tab-hide safety net cancel a drag cleanly.
+    // ══════════════════════════════════════════════════════════════════════
+    //  HEIGHT-MAP MASONRY PACKER — the vertical-compaction engine.
+    //  For each card (in DOM order) we know its column WIDTH (tracks). We
+    //  choose the leftmost column band whose tracks are all free earliest,
+    //  place the card there with an explicit grid-column (PINNED — this is
+    //  what stops cards ever migrating sideways), then advance a per-column
+    //  "next free row" map by the card's pixel height + the vertical gap.
+    //  Result: each column stacks from the top independently; shortening a
+    //  card lowers its columns' next-free-row, so the card below it in that
+    //  same column rises flush underneath. No cross-column surprises.
+    // ══════════════════════════════════════════════════════════════════════
+    function relayout(){
+        const grid = gridOf(); if (!grid) return;
+        // Off / hidden → hand control back to CSS (mobile stack or other tab).
+        if (!wide() || !dashActive()) {
+            grid.style.gridAutoRows = ''; grid.style.rowGap = '';
+            [...grid.children].forEach(c => { c.style.gridRow = ''; c.style.gridColumn = ''; });
+            return;
+        }
+        grid.style.gridAutoRows = '1px';   // 1px implicit rows = 1px packing granularity
+        grid.style.rowGap = '0px';         // vertical rhythm is baked into each span instead
+        const cs = getComputedStyle(grid);
+        const colGap = parseFloat(cs.columnGap) || parseFloat(cs.gap) || 22;
+        const gap = colGap > 0 ? colGap : 22;
+
+        const cards = [...grid.children].filter(c => c.classList.contains('dash-card'));
+        // Step A — assign each card its WIDTH and measure its natural height.
+        // (A temp grid-column start is fine; width depends only on the span.)
+        const info = cards.map(c => {
+            const w = widthOf(c);
+            const wantCol = '1 / span ' + w;
+            if (c.style.gridColumn !== wantCol) c.style.gridColumn = wantCol;
+            return { c, w, h: 0 };
+        });
+        void grid.offsetHeight;                       // single forced layout
+        info.forEach(o => { o.h = o.c.offsetHeight; });
+
+        // Step B — pack top-down with the per-column height map.
+        const hmap = new Array(COLS + 1).fill(1);     // 1-based next-free row line per track
+        info.forEach(o => {
+            const w = o.w; let bestC = 1, bestR = Infinity;
+            for (let c = 1; c <= COLS - w + 1; c++) {
+                let r = 1; for (let k = c; k < c + w; k++) r = Math.max(r, hmap[k]);
+                if (r < bestR) { bestR = r; bestC = c; }   // earliest row, leftmost on tie
+            }
+            const rows = o.h + gap;                   // card height + gap baked as empty tracks
+            const colStr = bestC + ' / span ' + w;
+            const rowStr = bestR + ' / span ' + rows;
+            if (o.c.style.gridColumn !== colStr) o.c.style.gridColumn = colStr;  // compare → no spurious RO
+            if (o.c.style.gridRow !== rowStr) o.c.style.gridRow = rowStr;
+            for (let k = bestC; k < bestC + w; k++) hmap[k] = bestR + rows;
+        });
+    }
+    let _rlRaf = 0;
+    function scheduleRelayout(){ if (_rlRaf) return; _rlRaf = requestAnimationFrame(() => { _rlRaf = 0; relayout(); }); }
+
+    // Re-pack when a card's own height changes (vertical drag, content, charts).
+    function watchCards(){
+        if (!('ResizeObserver' in window)) return;
+        IDS.forEach(id => {
+            const c = cardById(id); if (!c || c._bentoRO) return;
+            c._bentoRO = new ResizeObserver(() => scheduleRelayout());
+            c._bentoRO.observe(c);
+        });
+    }
+    // Re-pack the instant the dashboard becomes visible (offsetHeight is 0 while hidden).
+    function watchVisibility(){
+        const dash = document.getElementById('view-dashboard'); if (!dash || !('MutationObserver' in window)) return;
+        new MutationObserver(() => { if (dashActive()) scheduleRelayout(); }).observe(dash, { attributes: true, attributeFilter: ['class'] });
+    }
+
+    // ── Drag engine: move + release on WINDOW so they can't be lost ────────
     let _dragActive = false;
     function startDrag(onMove, onEnd){
         _dragActive = true;
@@ -987,31 +1066,23 @@ window.setMatrixSearch = function (value) {
             if (!_dragActive) return;
             _dragActive = false;
             document.body.classList.remove('bento-dragging');
-            document.querySelectorAll('#view-dashboard .dash-card.bento-drag-target').forEach(c => {
-                c.classList.remove('bento-drag-target'); c.style.pointerEvents = '';
-            });
+            document.querySelectorAll('#view-dashboard .dash-card.bento-drag-target').forEach(c => { c.classList.remove('bento-drag-target'); c.style.pointerEvents = ''; });
             try { onEnd(ev); } catch (e) {}
         };
         window.addEventListener('pointermove', move, { passive: false });
         window.addEventListener('pointerup', end);
         window.addEventListener('pointercancel', end);
-        return end;
     }
-    // Safety net: alt-tab / screen-lock / window-blur mid-drag fires no
-    // pointerup. Force-end the drag and SAVE the last snapped size so a
-    // distracted drag still persists instead of vanishing on refresh.
     function forceEndAllDrags(){
         if (!_dragActive) return;
         _dragActive = false;
         document.body.classList.remove('bento-dragging');
-        document.querySelectorAll('#view-dashboard .dash-card.bento-drag-target').forEach(c => {
-            c.classList.remove('bento-drag-target'); c.style.pointerEvents = '';
-        });
+        document.querySelectorAll('#view-dashboard .dash-card.bento-drag-target').forEach(c => { c.classList.remove('bento-drag-target'); c.style.pointerEvents = ''; });
         try { persistAll(); } catch (e) {}
-        settle();
+        scheduleRelayout(); settle();
     }
 
-    // ── Toolbar ──────────────────────────────────────────────────────────
+    // ── Toolbar ────────────────────────────────────────────────────────────
     function buildToolbar(dash){
         const tb = document.createElement('div'); tb.className = 'bento-toolbar';
         tb.innerHTML = `
@@ -1023,7 +1094,7 @@ window.setMatrixSearch = function (value) {
             </div>
             <button type="button" class="bento-edit-btn" data-bento-edit>✛ Resize</button>
             <button type="button" class="bento-reset-btn" data-bento-reset>↺ Reset</button>
-            <span class="bento-hint">Right edge = width · bottom edge = height (dbl‑click = fit) · ⠿ = reorder · auto‑saved</span>`;
+            <span class="bento-hint">Right edge = width · bottom edge = height (dbl‑click = fit) · ⠿ = reorder · the box below auto‑fills gaps · auto‑saved</span>`;
         dash.insertBefore(tb, dash.firstChild);
 
         const grid = gridOf();
@@ -1031,7 +1102,7 @@ window.setMatrixSearch = function (value) {
             grid.classList.remove('bento-density-compact','bento-density-cozy','bento-density-spacious');
             if (d && d !== 'cozy') grid.classList.add('bento-density-' + d);
             tb.querySelectorAll('[data-d]').forEach(b => b.classList.toggle('active', b.dataset.d === d));
-            const s = load(); s.density = d; save(s); settle();
+            const s = load(); s.density = d; save(s); scheduleRelayout(); settle();
         };
         applyDensity((load().density) || 'cozy');
         tb.querySelector('[data-bento-density]').addEventListener('click', e => { const b = e.target.closest('[data-d]'); if (b) applyDensity(b.dataset.d); });
@@ -1040,15 +1111,15 @@ window.setMatrixSearch = function (value) {
         editBtn.addEventListener('click', () => { const on = dash.classList.toggle('bento-edit'); editBtn.classList.toggle('active', on); });
 
         tb.querySelector('[data-bento-reset]').addEventListener('click', () => {
-            IDS.forEach(id => { const c = cardById(id); if (c) { clearSpan(c); clearWrap(c); delete c.dataset.bentoPrevSpan; } });
-            IDS.forEach(id => { const c = cardById(id); if (c) grid.appendChild(c); });
+            IDS.forEach(id => { const c = cardById(id); if (c) { clearWrap(c); delete c.dataset.bentoSpan; delete c.dataset.bentoPrevSpan; } });
+            IDS.forEach(id => { const c = cardById(id); if (c) grid.appendChild(c); });   // default order
             persistAll();
-            settle();
+            relayout(); settle();
         });
         return tb;
     }
 
-    // ── Per-card handles + grip + focus ──────────────────────────────────
+    // ── Per-card handles + grip + focus ────────────────────────────────────
     function equipCard(card){
         if (card.dataset.bentoEquip) return; card.dataset.bentoEquip = '1';
 
@@ -1056,38 +1127,41 @@ window.setMatrixSearch = function (value) {
         const grip = document.createElement('button'); grip.className = 'bento-ctrl-btn bento-ctrl-grip'; grip.type = 'button'; grip.title = 'Drag to reorder'; grip.textContent = '⠿';
         const focus = document.createElement('button'); focus.className = 'bento-ctrl-btn'; focus.type = 'button'; focus.title = 'Expand / restore width'; focus.textContent = '⤢';
         focus.addEventListener('click', () => {
-            const cur = spanOf(card);
+            const cur = widthOf(card);
             if (cur >= 12) {
                 const prev = card.dataset.bentoPrevSpan;
-                if (prev === 'auto' || prev === undefined) clearSpan(card); else setSpan(card, parseInt(prev, 10));
+                if (prev === 'auto' || prev === undefined) delete card.dataset.bentoSpan; else card.dataset.bentoSpan = prev;
             } else {
-                card.dataset.bentoPrevSpan = hasInlineSpan(card) ? String(cur) : 'auto';
-                setSpan(card, 12);
+                card.dataset.bentoPrevSpan = card.dataset.bentoSpan ? card.dataset.bentoSpan : 'auto';
+                card.dataset.bentoSpan = '12';
             }
-            persistAll(); settle();
+            persistAll(); scheduleRelayout();
         });
         ctrls.appendChild(grip); ctrls.appendChild(focus); card.appendChild(ctrls);
 
-        // Horizontal (right edge)
+        // Horizontal (right edge) — changes WIDTH only; the packer re-derives the column.
         const handle = document.createElement('div'); handle.className = 'bento-handle'; handle.tabIndex = 0;
         handle.setAttribute('role','slider'); handle.setAttribute('aria-label','Resize card width'); card.appendChild(handle);
         handle.addEventListener('pointerdown', e => {
             if (!editing()) return; e.preventDefault();
             const grid = gridOf();
-            const colW = grid.getBoundingClientRect().width / 12;
-            const start = spanOf(card), x0 = e.clientX; let cur = start;
+            const cs = getComputedStyle(grid); const colGap = parseFloat(cs.columnGap) || parseFloat(cs.gap) || 22;
+            const trackW = (grid.clientWidth - colGap * (COLS - 1)) / COLS;
+            const step = Math.max(1, trackW + colGap);
+            const start = widthOf(card), x0 = e.clientX; let cur = start;
             card.classList.add('bento-drag-target');
             startDrag(
-                ev => { const ns = clamp(start + Math.round((ev.clientX - x0) / colW), 3, 12); if (ns !== cur) { cur = ns; setSpan(card, ns); } },
-                () => { card.classList.remove('bento-drag-target'); persistAll(); settle(); }
+                ev => { const ns = clamp(start + Math.round((ev.clientX - x0) / step), 3, 12); if (ns !== cur) { cur = ns; card.dataset.bentoSpan = String(ns); scheduleRelayout(); } },
+                () => { card.classList.remove('bento-drag-target'); persistAll(); scheduleRelayout(); settle(); }
             );
         });
         handle.addEventListener('keydown', e => {
             if (!editing() || (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight')) return; e.preventDefault();
-            setSpan(card, spanOf(card) + (e.key === 'ArrowRight' ? 1 : -1)); persistAll(); settle();
+            card.dataset.bentoSpan = String(clamp(widthOf(card) + (e.key === 'ArrowRight' ? 1 : -1), 3, 12));
+            persistAll(); scheduleRelayout();
         });
 
-        // Vertical (bottom edge)
+        // Vertical (bottom edge) — sets a fixed height; the packer lifts the card below.
         const handleV = document.createElement('div'); handleV.className = 'bento-handle-v'; handleV.tabIndex = 0;
         handleV.setAttribute('role','slider'); handleV.setAttribute('aria-label','Resize card height'); card.appendChild(handleV);
         handleV.addEventListener('pointerdown', e => {
@@ -1096,13 +1170,13 @@ window.setMatrixSearch = function (value) {
             const startH = card.getBoundingClientRect().height, y0 = e.clientY; const w = ensureWrap(card);
             card.classList.add('bento-drag-target');
             startDrag(
-                ev => { w.style.height = Math.max(40, clamp(startH + (ev.clientY - y0), V_MIN, V_MAX) - vpad) + 'px'; },
-                () => { card.classList.remove('bento-drag-target'); persistAll(); settle(); }
+                ev => { w.style.height = Math.max(40, clamp(startH + (ev.clientY - y0), V_MIN, V_MAX) - vpad) + 'px'; scheduleRelayout(); },
+                () => { card.classList.remove('bento-drag-target'); persistAll(); scheduleRelayout(); settle(); }
             );
         });
-        handleV.addEventListener('dblclick', () => { if (!editing()) return; clearWrap(card); persistAll(); settle(); });
+        handleV.addEventListener('dblclick', () => { if (!editing()) return; clearWrap(card); persistAll(); scheduleRelayout(); });
 
-        // Reorder grip (drag whole card up / down / into any slot)
+        // Reorder grip — physical DOM move; the packer re-packs in the new order.
         grip.addEventListener('pointerdown', e => {
             if (!editing()) return; e.preventDefault(); e.stopPropagation();
             const grid = gridOf(); let dragged = card, lastTarget = null, lastBefore = null, raf = 0, lastEv = e;
@@ -1119,14 +1193,15 @@ window.setMatrixSearch = function (value) {
                         if (t === lastTarget && before === lastBefore) return;
                         lastTarget = t; lastBefore = before;
                         grid.insertBefore(dragged, before ? t : t.nextSibling);
+                        scheduleRelayout();
                     });
                 },
-                () => { if (raf) { cancelAnimationFrame(raf); raf = 0; } card.style.pointerEvents = ''; card.classList.remove('bento-drag-target'); dragged = null; persistAll(); settle(); }
+                () => { if (raf) { cancelAnimationFrame(raf); raf = 0; } card.style.pointerEvents = ''; card.classList.remove('bento-drag-target'); dragged = null; persistAll(); scheduleRelayout(); settle(); }
             );
         });
     }
 
-    // ── Apply saved layout (order → widths → heights), with re-assert ────
+    // ── Apply saved layout (order → widths → heights → pack) ───────────────
     function applySaved(){
         if (document.body.classList.contains('bento-dragging')) return;
         const o = load(); const grid = gridOf(); if (!grid) return;
@@ -1138,18 +1213,10 @@ window.setMatrixSearch = function (value) {
         const spans = o.spans || {}, heights = o.heights || {};
         IDS.forEach(id => {
             const c = cardById(id); if (!c) return;
-            if (wide() && typeof spans[id] === 'number') setSpan(c, spans[id]); else clearSpan(c);
-            if (wide() && heights[id]) { ensureWrap(c).style.height = heights[id] + 'px'; } else clearWrap(c);
+            if (typeof spans[id] === 'number') c.dataset.bentoSpan = String(spans[id]); else delete c.dataset.bentoSpan;
+            if (wide() && heights[id]) ensureWrap(c).style.height = heights[id] + 'px'; else clearWrap(c);
         });
-    }
-
-    function watchDecayWidth(){
-        const box = document.getElementById('chapter-decay-grid'); if (!box || !('ResizeObserver' in window)) return;
-        let t = 0;
-        new ResizeObserver(() => {
-            if (document.body.classList.contains('bento-dragging')) return;
-            clearTimeout(t); t = setTimeout(() => { try { if (typeof window.renderChapterDecayGrid === 'function') window.renderChapterDecayGrid(); } catch (e) {} }, 160);
-        }).observe(box);
+        relayout();
     }
 
     function boot(){
@@ -1157,16 +1224,20 @@ window.setMatrixSearch = function (value) {
         buildToolbar(dash);
         IDS.forEach(id => { const c = cardById(id); if (c) equipCard(c); });
         applySaved();
-        watchDecayWidth();
-        // Re-assert after first paint + a safety timeout (kills the load race).
-        requestAnimationFrame(() => requestAnimationFrame(applySaved));
-        setTimeout(applySaved, 150);
-        window.matchMedia(`(min-width: ${BP}px)`).addEventListener('change', applySaved);
+        watchCards();
+        watchVisibility();
+        // Re-assert after first paint + a safety timeout (kills the load race),
+        // and again once charts have drawn (their height changes the pack).
+        requestAnimationFrame(() => requestAnimationFrame(() => { applySaved(); scheduleRelayout(); }));
+        setTimeout(() => { applySaved(); scheduleRelayout(); }, 160);
+        window.addEventListener('load', scheduleRelayout);
+        window.matchMedia(`(min-width: ${BP}px)`).addEventListener('change', applySaved);   // masonry on/off
+        window.matchMedia(`(min-width: ${BP2}px)`).addEventListener('change', scheduleRelayout); // 2-col ↔ 1-col default
+        window.addEventListener('resize', scheduleRelayout);
         // Persistence + drag safety.
         window.addEventListener('beforeunload', () => { try { persistAll(); } catch (e) {} });
-        window.addEventListener('blur', forceEndAllDrags);                 // alt-tab mid-drag
-        document.addEventListener('visibilitychange', () => { if (document.hidden) forceEndAllDrags(); }); // tab-hide / lock mid-drag
-        requestAnimationFrame(settle);
+        window.addEventListener('blur', forceEndAllDrags);
+        document.addEventListener('visibilitychange', () => { if (document.hidden) forceEndAllDrags(); else scheduleRelayout(); });
     }
     ready(boot);
 })();
