@@ -6744,3 +6744,332 @@ const globalMathObserver = new MutationObserver(function (mutations) {
         clear: clearCanvas,
     };
 })();
+
+// ============================================================================
+//  ADDICTIVE COCKPIT + LOOP-RAIL NAVIGATION  (append-only, self-wiring)
+//  Psychologically engineered practice header + progression navigation.
+//  Reads existing state/DOM only; relocates current header nodes by their
+//  stable IDs into a new "cockpit"; never mutates existing app logic.
+// ============================================================================
+(function CK_ENGINE() {
+  if (window.__ckEngine) return; window.__ckEngine = true;
+
+  const LS_SHIELDS = 'jeemax_ck_shields';
+  const CK = {
+    built: false, sessionOpen: false,
+    combo: 0, sessionCorrect: 0, sessionTarget: 1, lastStreak: 0,
+    crit: 0, critPrimed: false,
+    shields: 0,
+    tickerIdx: 0, tickerAt: 0,
+    last: {},           // text de-dup cache
+    navBuilt: false, slowAt: 0,
+  };
+  try { CK.shields = Math.max(0, parseInt(localStorage.getItem(LS_SHIELDS) || '0', 10) || 0); } catch (e) { CK.shields = 0; }
+  const persistShields = () => { try { localStorage.setItem(LS_SHIELDS, String(CK.shields)); } catch (e) {} };
+
+  const $ = (id) => document.getElementById(id);
+  const setT = (id, t) => { if (CK.last[id] === t) return; CK.last[id] = t; const e = $(id); if (e) e.textContent = t; };
+  const setW = (id, p) => { const e = $(id); if (e) e.style.width = Math.max(0, Math.min(100, p)) + '%'; };
+  const setRing = (id, p, c) => { const e = $(id); if (!e) return; e.style.setProperty('--p', Math.max(0, Math.min(100, p))); if (c) e.style.setProperty('--ring-c', c); };
+  const pop = (el) => { if (!el) return; el.classList.remove('ck-pop'); void el.offsetWidth; el.classList.add('ck-pop'); };
+  const totalSolved = () => (solved.physics || 0) + (solved.chemistry || 0) + (solved.maths || 0);
+
+  function comboColor(c) { return c >= 8 ? '#fbbf24' : c >= 4 ? '#a78bfa' : c >= 2 ? '#22c55e' : '#9aa3b5'; }
+  function depthFor(s) {
+    if (s >= 120) return { t: 'TRANSCENDENT', p: 100, c: '#a78bfa' };
+    if (s >= 60)  return { t: 'FLOW', p: ((s - 60) / 60) * 100, c: '#3ddcff' };
+    if (s >= 20)  return { t: 'DEEP', p: ((s - 20) / 40) * 100, c: '#22c55e' };
+    return { t: 'SURFACE', p: (s / 20) * 100, c: '#9aa3b5' };
+  }
+
+  // ---- Build the cockpit by relocating existing header nodes (safe: by ID) ----
+  function buildCockpit() {
+    if (CK.built) return;
+    const hdr = document.querySelector('#practice-modal .practice-header');
+    if (!hdr) return;
+    const streakViz = document.querySelector('#practice-modal #streak-visualizer');
+    const eloSlot   = document.querySelector('#practice-modal #elo-header-slot');
+    const timer     = document.querySelector('#practice-modal #question-timer');
+    const hideBtn   = document.querySelector('#practice-modal #hide-photo-toggle');
+    const immBtn    = document.querySelector('#practice-modal #immersive-focus-btn');
+    const closeBtn  = hdr.querySelector('.hide-toggle[onclick*="closePracticeModal"]') ||
+                      [...hdr.querySelectorAll('.hide-toggle')].find(b => b !== hideBtn && b !== immBtn);
+
+    const ck = document.createElement('div');
+    ck.className = 'practice-cockpit';
+    ck.innerHTML =
+      '<div class="ck-row ck-top">' +
+        '<div class="ck-identity">' +
+          '<span class="ck-tier-icon" id="ck-tier-icon">🧍</span>' +
+          '<div class="ck-tier-meta">' +
+            '<span class="ck-tier-name" id="ck-tier-name">NPC</span>' +
+            '<div class="ck-xpbar"><div class="ck-xpfill" id="ck-xpfill"></div></div>' +
+            '<span class="ck-xp-label" id="ck-xp-label">—</span>' +
+          '</div>' +
+        '</div>' +
+        '<div class="ck-combo" id="ck-combo">' +
+          '<div class="ck-ring ck-combo-ring" id="ck-combo-ring"><div class="ck-ring-hole">' +
+            '<span class="ck-combo-x" id="ck-combo-x">×1</span><span class="ck-combo-lbl">COMBO</span>' +
+          '</div></div>' +
+          '<div class="ck-crit"><div class="ck-crit-fill" id="ck-crit-fill"></div><span class="ck-crit-lbl" id="ck-crit-lbl">⚡ CRIT</span></div>' +
+        '</div>' +
+        '<div class="ck-streak">' +
+          '<div class="ck-streak-slot" id="ck-streak-slot"></div>' +
+          '<div class="ck-shields" id="ck-shields" title="Streak-save shields (persisted)">🛡 <span id="ck-shield-n">0</span></div>' +
+        '</div>' +
+        '<div class="ck-session">' +
+          '<div class="ck-ring ck-session-ring" id="ck-session-ring"><div class="ck-ring-hole">' +
+            '<span class="ck-session-n" id="ck-session-n">0/0</span><span class="ck-session-lbl">SESSION</span>' +
+          '</div></div>' +
+        '</div>' +
+        '<div class="ck-depth">' +
+          '<span class="ck-depth-tier" id="ck-depth-tier">SURFACE</span>' +
+          '<div class="ck-depth-meter"><div class="ck-depth-fill" id="ck-depth-fill"></div></div>' +
+          '<span class="ck-timer-slot" id="ck-timer-slot"></span>' +
+        '</div>' +
+        '<div class="ck-utils" id="ck-utils"></div>' +
+      '</div>' +
+      '<div class="ck-ticker"><span id="ck-ticker-text">Lock in. Every question is a pull.</span></div>';
+
+    hdr.classList.add('cockpit-active');
+    hdr.appendChild(ck);
+
+    // relocate existing nodes into the new slots (IDs + onclick travel with them)
+    const slot = (id) => ck.querySelector(id);
+    if (streakViz) slot('#ck-streak-slot').appendChild(streakViz);
+    if (timer)     slot('#ck-timer-slot').appendChild(timer);
+    if (eloSlot)   ck.querySelector('.ck-combo').appendChild(eloSlot);
+    const utils = slot('#ck-utils');
+    [hideBtn, immBtn, closeBtn].forEach(n => { if (n) utils.appendChild(n); });
+
+    CK.built = true;
+    setT('ck-shield-n', String(CK.shields));
+  }
+
+  function critPayout() {
+    try { if (typeof window.showSupercharged === 'function') window.showSupercharged(); } catch (e) {}
+    try { if (typeof window.playSuperSound === 'function') window.playSuperSound(); } catch (e) {}
+    CK.shields += 1; persistShields(); setT('ck-shield-n', String(CK.shields));
+    pop($('ck-shields'));
+    setT('ck-crit-lbl', '💥 DETONATED');
+    setTimeout(() => setT('ck-crit-lbl', '⚡ CRIT'), 900);
+  }
+
+  // ---- Fast tick: derives combo / crit / rings / depth / ticker from live state ----
+  function fastTick() {
+    try {
+      if (!CK.built) buildCockpit();
+      const modal = $('practice-modal');
+      const modalActive = !!(modal && modal.classList.contains('active'));
+
+      if (modalActive) {
+        if (!CK.sessionOpen) {
+          CK.sessionOpen = true; CK.combo = 0; CK.sessionCorrect = 0;
+          CK.lastStreak = AppState.practiceCorrectStreak || 0;
+          CK.sessionTarget = Math.max(1, (AppState.practiceQuestions && AppState.practiceQuestions.length) || 1);
+          CK.crit = 0; CK.critPrimed = false;
+        }
+        const st = AppState.practiceCorrectStreak || 0;
+        if (st > CK.lastStreak) {
+          if (CK.critPrimed) { critPayout(); CK.critPrimed = false; CK.crit = 0; }
+          const inc = st - CK.lastStreak;
+          CK.combo += inc;
+          CK.sessionCorrect = Math.min(CK.sessionTarget, CK.sessionCorrect + inc);
+          CK.crit = Math.min(100, CK.crit + 34);
+          if (CK.crit >= 100) CK.critPrimed = true;
+          if (CK.combo > 0 && CK.combo % 5 === 0) { CK.shields += 1; persistShields(); setT('ck-shield-n', String(CK.shields)); pop($('ck-shields')); }
+          pop($('ck-combo'));
+        } else if (st < CK.lastStreak && CK.lastStreak > 0) {
+          if (CK.shields > 0) {
+            CK.shields -= 1; persistShields(); setT('ck-shield-n', String(CK.shields));
+            setT('ck-crit-lbl', '🛡 SAVED'); pop($('ck-shields'));
+            setTimeout(() => setT('ck-crit-lbl', '⚡ CRIT'), 1000);
+          } else {
+            CK.combo = 0; CK.crit = Math.max(0, CK.crit - 50); CK.critPrimed = false;
+          }
+        }
+        CK.lastStreak = st;
+      } else {
+        CK.sessionOpen = false;
+      }
+
+      // identity + tier XP bar
+      const elo = (AppState.elo && AppState.elo.global) || 1200;
+      const tier = getRankTierDetails(elo);
+      setT('ck-tier-icon', tier.icon);
+      setT('ck-tier-name', tier.name);
+      let xp = 100, xpLabel = 'Peak tier 🗿';
+      const myTier = (typeof ELO_RANK_TIERS !== 'undefined') ? ELO_RANK_TIERS.find(t => elo >= t.min && elo <= t.max) : null;
+      if (myTier && isFinite(myTier.max)) {
+        xp = Math.max(0, Math.min(100, ((elo - myTier.min) / (myTier.max + 1 - myTier.min)) * 100));
+        const nxt = _getNextTierThreshold(elo);
+        xpLabel = nxt ? (Math.max(0, Math.round(nxt - elo)) + ' pts to ' + (_getNextTierName(elo) || '')) : 'Peak tier 🗿';
+      }
+      setW('ck-xpfill', xp); setT('ck-xp-label', xpLabel);
+
+      // combo ring + crit bar
+      const cc = comboColor(CK.combo);
+      setRing('ck-combo-ring', CK.combo > 0 ? ((CK.combo % 5) / 5) * 100 || 100 : 0, cc);
+      setT('ck-combo-x', '×' + Math.max(1, CK.combo));
+      setW('ck-crit-fill', CK.crit);
+      if (CK.critPrimed) { const e = $('ck-crit'); if (e) e.classList.add('ck-primed'); } else { const e = $('ck-crit'); if (e) e.classList.remove('ck-primed'); }
+
+      // session ring
+      setRing('ck-session-ring', (CK.sessionCorrect / CK.sessionTarget) * 100, CK.sessionCorrect >= CK.sessionTarget ? '#22c55e' : '#ffb224');
+      setT('ck-session-n', CK.sessionCorrect + '/' + CK.sessionTarget);
+
+      // focus depth
+      const d = depthFor(AppState.practiceSeconds || 0);
+      setT('ck-depth-tier', d.t); setW('ck-depth-fill', d.p);
+      const df = $('ck-depth-fill'); if (df) df.style.background = d.c;
+      const dt = $('ck-depth-tier'); if (dt) dt.style.color = d.c;
+
+      // anticipation ticker
+      const now = performance.now();
+      const lines = [];
+      lines.push(CK.combo >= 2 ? ('🔥 Combo ×' + CK.combo + ' — one slip breaks it') : 'Land 2 in a row to ignite a combo');
+      lines.push(CK.critPrimed ? '⚡ CRIT PRIMED — next clutch detonates + 🛡' : ('⚡ ' + (100 - Math.floor(CK.crit)) + '% to a guaranteed CRIT'));
+      lines.push(CK.shields > 0 ? ('🛡 ' + CK.shields + ' shield' + (CK.shields > 1 ? 's' : '') + ' will absorb a slip') : 'Earn a 🛡 every 5-combo');
+      lines.push(xpLabel.indexOf('pts') >= 0 ? ('▲ ' + xpLabel) : ('🏆 ' + tier.name));
+      const tgt = (AppState.activeTargets || baseTargets || {});
+      lines.push('🎯 ' + totalSolved() + '/' + ((tgt.physics || 0) + (tgt.chemistry || 0) + (tgt.maths || 0)) + ' daily loop');
+      if (now - CK.tickerAt > 3500) { CK.tickerAt = now; CK.tickerIdx = (CK.tickerIdx + 1) % lines.length; }
+      setT('ck-ticker-text', lines[CK.tickerIdx % lines.length]);
+    } catch (e) { /* never break the app */ }
+  }
+
+  // ---- Navigation helpers ----
+  function ckNavItem(tab, label) {
+    let el = document.querySelector('.nav-item[data-tab="' + tab + '"]');
+    if (!el) [...document.querySelectorAll('.nav-item')].forEach(n => { if ((n.textContent || '').indexOf(label) >= 0) el = n; });
+    return el;
+  }
+  function buildNav() {
+    if (CK.navBuilt) return;
+    const sb = $('sidebar'); if (!sb) return;
+    const logo = sb.querySelector('.logo-container');
+
+    const loop = document.createElement('div');
+    loop.className = 'nav-ck-loop';
+    loop.innerHTML =
+      '<div class="nav-ck-loop-title">TODAY\'S LOOP <span class="nav-ck-risk" id="nav-ck-risk">close it to keep the streak</span></div>' +
+      '<div class="nav-ck-arcs">' +
+        arc('p', 'P', '#3ddcff') + arc('c', 'C', '#22c55e') + arc('m', 'M', '#ffb224') + arc('f', '✓', '#a78bfa') +
+      '</div>';
+    if (logo && logo.nextSibling) logo.parentNode.insertBefore(loop, logo.nextSibling); else sb.appendChild(loop);
+
+    const profile = sb.querySelector('.user-profile');
+    if (profile) {
+      const ladder = document.createElement('div');
+      ladder.className = 'nav-ck-ladder';
+      ladder.id = 'nav-ck-ladder';
+      profile.appendChild(ladder);
+    }
+    CK.navBuilt = true;
+  }
+  function arc(key, label, color) {
+    return '<div class="nav-ck-arc"><div class="ck-ring nav-ck-ring" id="nav-ck-arc-' + key + '" style="--ring-c:' + color + '"><div class="ck-ring-hole"><span class="nav-ck-arc-lbl">' + label + '</span></div></div></div>';
+  }
+
+  function ckFixToday() {
+    const tk = new Date().toLocaleDateString('en-CA');
+    const c = { physics: 0, chemistry: 0, maths: 0 };
+    for (const q of AppState.questionBank) {
+      if (!q.historyLogs) continue;
+      for (const l of q.historyLogs) {
+        if (l && l.result === 'correct' && l.timestamp && new Date(l.timestamp).toLocaleDateString('en-CA') === tk) {
+          const s = (q.subject || '').toLowerCase(); if (s in c) c[s]++;
+        }
+      }
+    }
+    return c;
+  }
+  function ckReadyCount() {
+    let n = 0;
+    for (const q of AppState.questionBank) {
+      if (q.errorReason && (q.status === 'error' || q.status === 'solved' || q.status === 'wrong')) {
+        try { if (getDueStatus(q).status === 'ready') n++; } catch (e) {}
+      }
+    }
+    return n;
+  }
+  function ckLowHealth() {
+    const map = {};
+    for (const q of AppState.questionBank) {
+      if (q.errorReason && (q.status === 'error' || q.status === 'solved' || q.status === 'wrong')) {
+        const k = (q.subject || '') + '||' + (q.chapter || ''); (map[k] = map[k] || { s: q.subject, c: q.chapter });
+      }
+    }
+    let worst = null;
+    for (const k in map) { const h = _getChapterHealth(map[k].s, map[k].c); if (h < 45 && (worst === null || h < worst.h)) worst = { h: h, c: map[k].c }; }
+    return worst;
+  }
+  function setBadge(tab, label, n, glow) {
+    const item = ckNavItem(tab, label); if (!item) return;
+    let b = item.querySelector('.nav-ck-badge');
+    if (n > 0) {
+      if (!b) { b = document.createElement('span'); b.className = 'nav-ck-badge'; item.appendChild(b); }
+      b.textContent = n; b.classList.toggle('glow', !!glow);
+    } else if (b) { b.remove(); }
+  }
+  function setBeacon(tab, label, on) {
+    const item = ckNavItem(tab, label); if (!item) return;
+    let d = item.querySelector('.nav-ck-beacon');
+    if (on) { if (!d) { d = document.createElement('span'); d.className = 'nav-ck-beacon'; item.insertBefore(d, item.firstChild); } }
+    else if (d) { d.remove(); }
+  }
+
+  function refreshNav() {
+    try {
+      buildNav();
+      const sb = $('sidebar'); if (!sb) return;
+      const tgt = AppState.activeTargets || baseTargets || {};
+      const fix = ckFixToday();
+      const bt = baseErrorTargets || {};
+      setRing('nav-ck-arc-p', tgt.physics ? Math.min(100, (solved.physics / tgt.physics) * 100) : 0);
+      setRing('nav-ck-arc-c', tgt.chemistry ? Math.min(100, (solved.chemistry / tgt.chemistry) * 100) : 0);
+      setRing('nav-ck-arc-m', tgt.maths ? Math.min(100, (solved.maths / tgt.maths) * 100) : 0);
+      const fixTot = (fix.physics + fix.chemistry + fix.maths), fixTgt = (bt.physics + bt.chemistry + bt.maths) || 1;
+      setRing('nav-ck-arc-f', Math.min(100, (fixTot / fixTgt) * 100));
+
+      const loopDone = (solved.physics >= (tgt.physics || 1)) && (solved.chemistry >= (tgt.chemistry || 1)) && (solved.maths >= (tgt.maths || 1)) && fixTot >= fixTgt;
+      const loop = sb.querySelector('.nav-ck-loop'); if (loop) loop.classList.toggle('ck-loop-done', loopDone);
+
+      const atRisk = new Date().getHours() >= 18 && totalSolved() === 0;
+      sb.classList.toggle('ck-streak-danger', atRisk);
+      const risk = $('nav-ck-risk'); if (risk) risk.textContent = atRisk ? '🚨 STREAK AT RISK — solve 1 now' : (loopDone ? '🌌 LOOP CLOSED' : 'close it to keep the streak');
+
+      // tier ladder mini-map
+      const ladder = $('nav-ck-ladder');
+      if (ladder && typeof ELO_RANK_TIERS !== 'undefined') {
+        const elo = (AppState.elo && AppState.elo.global) || 1200;
+        const cur = getRankTierDetails(elo).name;
+        const idx = ELO_RANK_TIERS.findIndex(t => elo >= t.min && elo <= t.max);
+        const show = ELO_RANK_TIERS.slice(Math.max(0, idx - 1), idx + 2);
+        ladder.innerHTML = show.map(t => '<div class="nav-ck-rung' + (t.name === cur ? ' here' : '') + '"><span class="nav-ck-rung-ic">' + t.icon + '</span><span class="nav-ck-rung-nm">' + t.name + '</span></div>').join('');
+      }
+
+      // beacons
+      const mini = $('pomo-mini-widget');
+      setBeacon('pomodoro', 'Focus Mode', !!(mini && !mini.classList.contains('hidden')));
+      setBeacon('practice', 'Grind Station', CK.sessionOpen && CK.sessionCorrect > 0);
+    } catch (e) {}
+  }
+  function slowTick() {
+    try {
+      setBadge('errors', 'The Vault', ckReadyCount(), true);
+      const low = ckLowHealth();
+      const pItem = ckNavItem('practice', 'Grind Station');
+      if (pItem) pItem.classList.toggle('nav-ck-pulse', !!low);
+    } catch (e) {}
+  }
+
+  function boot() {
+    if (!document.body) { requestAnimationFrame(boot); return; }
+    buildCockpit(); buildNav(); refreshNav(); slowTick();
+    setInterval(fastTick, 250);
+    setInterval(() => { refreshNav(); }, 1000);
+    setInterval(slowTick, 4000);
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot); else boot();
+})();
