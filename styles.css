@@ -4295,3 +4295,52 @@ body.bento-dragging #view-dashboard .dash-card.dash-card-tracker {
   .ck-xpbar { width: 84px; }
   .ck-utils { margin-left: 0; width: 100%; justify-content: flex-end; }
 }
+/* ============================================================
+   PATCH v2 — sidebar strip compaction + collapse hardening
+   + practice / drawer header heading room
+   ============================================================ */
+
+/* 1) SIDEBAR — keep the MMR strip from widening the profile card.
+      Force it onto its own slim line and shrink its footprint. */
+.user-profile { flex-wrap: wrap; row-gap: 6px; }
+.username-txt { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.global-mmr-row {
+  flex: 0 0 100%;            /* own line, full card width            */
+  min-width: 0;              /* never force the card wider           */
+  margin-top: 4px;           /* was 10px                             */
+  padding: 3px 8px;          /* was 7px 10px                         */
+  gap: 6px;
+  border-radius: 8px;
+}
+.global-mmr-row .mmr-tier-badge { font-size: 10px; line-height: 1.2; }
+.global-mmr-row .mmr-score { font-size: 12px; }
+
+/* 2) SIDEBAR COLLAPSED — clean circular avatar, strip fully gone. */
+.sidebar.collapsed .user-profile { flex-wrap: nowrap; row-gap: 0; padding: 10px; }
+.sidebar.collapsed .pfp-img { width: 28px; height: 28px; }   /* fits the 48px circle, no clipping */
+.sidebar.collapsed .global-mmr-row { display: none !important; }
+
+/* 3) PRACTICE DRAWER HEADER — let the chapter heading breathe. */
+.sr-drawer-header { gap: 10px; }
+.sr-drawer-header > div:first-of-type { min-width: 0; flex: 1 1 auto; }
+.sr-drawer-title { overflow-wrap: anywhere; word-break: break-word; line-height: 1.25; }
+.sr-drawer-sub { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sr-drawer-header-actions { flex: 0 0 auto; flex-wrap: wrap; justify-content: flex-end; gap: 6px; }
+.elo-header-slot { min-width: 0; }
+
+/* 4) STANDARD PRACTICE MODAL HEADER + VAULT TITLES — same room,
+      in case the cramped heading lives here instead of the drawer. */
+.practice-header { flex-wrap: wrap; row-gap: 10px; }
+.practice-header > * { min-width: 0; }
+.practice-header .timer-display-sm,
+.practice-header .hide-toggle,
+.practice-header .btn,
+.practice-header .btn-secondary { flex: 0 0 auto; }
+.error-controls { flex-wrap: wrap; row-gap: 12px; }
+#error-matrix-title, #question-list-title,
+#detail-chapter-name, #chapters-subject-title {
+  min-width: 0; flex: 0 1 auto; overflow-wrap: anywhere; word-break: break-word;
+}
+
+/* 5) Tiny screens — keep the drawer header tidy. */
+@media (max-width: 480px) { .sr-hide-img-btn { padding: 6px 8px; font-size: 10px; } }
