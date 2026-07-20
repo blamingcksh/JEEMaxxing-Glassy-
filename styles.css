@@ -3704,3 +3704,230 @@ html.fx-effects-off body.overheat-active .practice-header .hide-toggle { animati
     #view-dashboard .erm-layout         { grid-template-columns: 1fr; }
     .main-content .header-section h1    { font-size: 21px; }
 }
+/* ════════════════════════════════════════════════════════════════════════
+   ✦ PREMIUM AESTHETIC PASS — "make it super aesthetic"
+   Append to the VERY END of styles.css. Reversible: delete this block.
+   A cohesive glass + aurora + grain reskin. Id-scoped so it wins over any
+   earlier theme (purple or amber). No JS / DOM / data touched.
+   ════════════════════════════════════════════════════════════════════════ */
+@property --aes-angle { syntax: '<angle>'; inherits: false; initial-value: 0deg; }
+
+:root {
+    color-scheme: dark;
+    --aes-amber:  #ffb224;
+    --aes-amber2: #ff7a1a;
+    --aes-cyan:   #3ddcff;
+    --aes-violet: #a78bfa;
+    --aes-ink:    #f3f5fb;
+    --aes-dim:    #98a2bd;
+    --aes-line:   rgba(255,255,255,0.08);
+    --aes-glass:  linear-gradient(180deg, rgba(255,255,255,0.055), rgba(255,255,255,0.018));
+    --aes-display:'Chakra Petch','Space Grotesk','Plus Jakarta Sans',system-ui,sans-serif;
+    --aes-num:    'Space Grotesk','Chakra Petch',ui-monospace,'SFMono-Regular',monospace;
+}
+
+/* ── 1. BACKDROP — aurora mesh + fine grid + film grain (one pseudo) ───── */
+body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    background:
+        /* film grain (baked-in low alpha SVG turbulence) */
+        url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.035'/%3E%3C/svg%3E"),
+        /* aurora blobs */
+        radial-gradient(46rem 36rem at 12% -8%,  rgba(255,178,36,0.10), transparent 60%),
+        radial-gradient(40rem 34rem at 102% 6%,  rgba(61,220,255,0.08), transparent 60%),
+        radial-gradient(48rem 40rem at 50% 116%, rgba(167,139,250,0.07), transparent 62%),
+        /* deep base wash */
+        radial-gradient(120% 120% at 50% 0%, #0b0d14 0%, #070809 60%, #050507 100%);
+    background-attachment: fixed;
+    animation: aesAurora 24s ease-in-out infinite alternate;
+}
+@keyframes aesAurora {
+    0%   { filter: hue-rotate(0deg)   saturate(1);   }
+    100% { filter: hue-rotate(-12deg) saturate(1.12); }
+}
+/* retune the legacy ambient layers (if present) to the new palette */
+.ambient-glow          { background: radial-gradient(circle, rgba(255,178,36,0.10), transparent 68%) !important; }
+.ambient-glow.glow-secondary { background: radial-gradient(circle, rgba(61,220,255,0.08), transparent 68%) !important; }
+
+/* ── 2. GLOBAL CRAFT — selection · focus · scrollbars · numerics ───────── */
+::selection { background: var(--aes-amber); color: #1a1206; }
+:focus-visible { outline: 2px solid var(--aes-cyan); outline-offset: 2px; border-radius: 6px; }
+* { scrollbar-width: thin; scrollbar-color: rgba(255,178,36,0.35) transparent; }
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-thumb { background: linear-gradient(180deg, rgba(255,178,36,0.5), rgba(255,122,26,0.4)); border-radius: 99px; border: 3px solid transparent; background-clip: padding-box; }
+::-webkit-scrollbar-thumb:hover { background: linear-gradient(180deg, rgba(255,178,36,0.8), rgba(255,122,26,0.6)); background-clip: padding-box; }
+.counter, .variance-card .val, .hour-stat .val, .erm-subj-count, .erm-total div,
+.erm-pct, .timer-display, .timer-display-sm, .mini-time, .badge .val,
+.mmr-score, .elo-monitor-rating, .cp-timer-value, .cp-grace-timer,
+.stat-value { font-family: var(--aes-num); font-variant-numeric: tabular-nums; font-feature-settings: "tnum" 1; letter-spacing: -0.01em; }
+
+/* ── 3. SIDEBAR — glass rail, glowing logo, sliding active nav ─────────── */
+#sidebar, .sidebar {
+    background: linear-gradient(180deg, rgba(14,16,24,0.72), rgba(9,10,16,0.82)) !important;
+    -webkit-backdrop-filter: blur(18px) saturate(130%); backdrop-filter: blur(18px) saturate(130%);
+    border-right: 1px solid var(--aes-line) !important;
+    box-shadow: inset -1px 0 0 rgba(255,255,255,0.04), 8px 0 40px -28px rgba(0,0,0,0.9);
+}
+.logo-text {
+    font-family: var(--aes-display) !important;
+    background: linear-gradient(100deg, #fff 10%, var(--aes-amber) 95%) !important;
+    -webkit-background-clip: text !important; background-clip: text !important;
+    -webkit-text-fill-color: transparent !important;
+    text-shadow: 0 0 26px rgba(255,178,36,0.25);
+}
+.logo-text::after { background: linear-gradient(90deg, var(--aes-amber), var(--aes-cyan)) !important; box-shadow: 0 0 12px rgba(255,178,36,0.6); }
+.nav-item { position: relative; font-family: var(--aes-display); letter-spacing: 0.3px; border-radius: 12px; transition: background .18s, color .18s, transform .18s; }
+.nav-item:hover { background: rgba(255,255,255,0.05); color: #fff; transform: translateX(3px); }
+.nav-item.active {
+    background: linear-gradient(90deg, rgba(255,178,36,0.16), rgba(255,178,36,0.02)) !important;
+    color: #fff !important;
+    box-shadow: inset 0 0 0 1px rgba(255,178,36,0.18);
+}
+.nav-item.active::before {
+    content: ''; position: absolute; left: 0; top: 18%; bottom: 18%; width: 3px; border-radius: 3px;
+    background: linear-gradient(180deg, var(--aes-amber), var(--aes-amber2));
+    box-shadow: 0 0 12px rgba(255,178,36,0.8);
+}
+.nav-item.active .icon { filter: drop-shadow(0 0 6px rgba(255,178,36,0.7)); }
+.user-profile {
+    background: var(--aes-glass) !important;
+    -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
+    border: 1px solid var(--aes-line) !important; border-radius: 16px !important;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.06);
+}
+.pfp-img { box-shadow: 0 0 0 2px rgba(255,178,36,0.5), 0 0 16px rgba(255,178,36,0.35); border-radius: 12px !important; }
+.global-mmr-row {
+    background: linear-gradient(90deg, rgba(255,178,36,0.16), rgba(61,220,255,0.12)) !important;
+    border: 1px solid rgba(255,178,36,0.4) !important; border-radius: 12px !important;
+    box-shadow: 0 0 18px rgba(255,178,36,0.22), inset 0 1px 0 rgba(255,255,255,0.08) !important;
+}
+.global-mmr-row .mmr-tier-badge { color: #ffe2b0 !important; text-shadow: 0 0 10px rgba(255,178,36,0.5); }
+
+/* ── 4. TOP CHROME — glass cat strip + header + jewel badges ───────────── */
+#cat-banner, .cat-banner {
+    background: var(--aes-glass) !important;
+    -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px);
+    border: 1px solid var(--aes-line) !important; border-radius: 14px !important;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.06), 0 10px 30px -22px rgba(0,0,0,0.8);
+}
+.cat-emoji { background: rgba(255,178,36,0.12); border: 1px solid rgba(255,178,36,0.25); border-radius: 10px; padding: 4px 7px; }
+.cat-text { font-family: var(--aes-display); }
+#main-header h1, .header-section h1 {
+    font-family: var(--aes-display) !important;
+    background: linear-gradient(180deg, #fff, #c7cde0);
+    -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+}
+.badge {
+    background: var(--aes-glass) !important;
+    -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
+    border: 1px solid var(--aes-line) !important; border-radius: 12px !important;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.06);
+    transition: transform .18s, border-color .18s, box-shadow .18s;
+}
+.badge:hover { transform: translateY(-2px); border-color: rgba(255,178,36,0.45) !important; box-shadow: 0 8px 22px -10px rgba(0,0,0,0.7), 0 0 16px rgba(255,178,36,0.18); }
+.manual-sync-btn { background: radial-gradient(circle at 30% 25%, rgba(255,178,36,0.35), rgba(255,122,26,0.18)) !important; border-color: rgba(255,178,36,0.5) !important; color: #ffe2b0 !important; box-shadow: 0 0 16px rgba(255,178,36,0.35); }
+
+/* ── 5. DASHBOARD BENTO — real glass cards w/ depth ────────────────────── */
+#view-dashboard .dash-card {
+    clip-path: none !important;
+    background: var(--aes-glass) !important;
+    -webkit-backdrop-filter: blur(14px) saturate(125%); backdrop-filter: blur(14px) saturate(125%);
+    border: 1px solid var(--aes-line) !important;
+    border-radius: 22px !important;
+    box-shadow:
+        inset 0 1px 0 rgba(255,255,255,0.08),
+        inset 0 0 0 1px rgba(0,0,0,0.18),
+        0 24px 50px -30px rgba(0,0,0,0.92) !important;
+    transition: transform .25s cubic-bezier(.22,1,.36,1), box-shadow .25s, border-color .25s;
+}
+#view-dashboard .dash-card:hover {
+    transform: translateY(-4px);
+    border-color: rgba(255,255,255,0.16) !important;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.12), 0 34px 64px -28px rgba(0,0,0,0.95), 0 0 0 1px rgba(255,178,36,0.12) !important;
+}
+/* the animated gradient hairline on the corner tick */
+#view-dashboard .dash-card::before {
+    height: 2px !important; border-radius: 2px !important;
+    background: linear-gradient(90deg, var(--aes-amber), var(--aes-cyan), transparent) !important;
+    box-shadow: 0 0 12px rgba(255,178,36,0.5);
+}
+#view-dashboard .dash-card-head .kicker { color: var(--aes-amber); letter-spacing: 2.6px; }
+#view-dashboard .dash-card-head .box-title { font-family: var(--aes-display); }
+
+/* ── HERO CARD (tracker) — animated conic gradient edge ────────────────── */
+#view-dashboard .dash-card-tracker {
+    border: 1px solid transparent !important;
+    background:
+        linear-gradient(180deg, rgba(20,22,32,0.78), rgba(11,13,20,0.82)) padding-box,
+        conic-gradient(from var(--aes-angle), var(--aes-amber), var(--aes-cyan), var(--aes-violet), var(--aes-amber)) border-box !important;
+    animation: aesSpin 8s linear infinite;
+}
+@keyframes aesSpin { to { --aes-angle: 360deg; } }
+#view-dashboard .dash-card-tracker::after {
+    content: ''; position: absolute; inset: 0; border-radius: 22px; pointer-events: none;
+    background: radial-gradient(120% 80% at 50% -10%, rgba(255,178,36,0.10), transparent 60%);
+}
+
+/* ── subject tiles — glassy, gradient numbers tied to subject ──────────── */
+#view-dashboard .compact-subject-card {
+    background: linear-gradient(180deg, rgba(255,255,255,0.05), rgba(255,255,255,0.015)) !important;
+    border: 1px solid var(--aes-line) !important; border-radius: 16px !important;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.06);
+    transition: transform .2s, border-color .2s, box-shadow .2s;
+}
+#view-dashboard .compact-subject-card:hover { transform: translateY(-3px); border-color: rgba(255,255,255,0.16) !important; box-shadow: 0 14px 30px -18px rgba(0,0,0,0.8); }
+#view-dashboard .compact-subject-card h4 { font-family: var(--aes-display); letter-spacing: 0.4px; }
+#view-dashboard .compact-subject-card[data-subject="physics"]   .counter { background: linear-gradient(180deg,#bff3ff,#3ddcff); -webkit-background-clip:text; background-clip:text; -webkit-text-fill-color:transparent; }
+#view-dashboard .compact-subject-card[data-subject="chemistry"] .counter { background: linear-gradient(180deg,#bbf7d0,#22c55e); -webkit-background-clip:text; background-clip:text; -webkit-text-fill-color:transparent; }
+#view-dashboard .compact-subject-card[data-subject="maths"]     .counter { background: linear-gradient(180deg,#ffe2b0,#ff7a1a); -webkit-background-clip:text; background-clip:text; -webkit-text-fill-color:transparent; }
+.counter-btn { border-radius: 10px !important; background: rgba(255,255,255,0.06) !important; border: 1px solid var(--aes-line) !important; transition: all .15s; }
+.counter-btn:hover { background: rgba(255,178,36,0.18) !important; border-color: rgba(255,178,36,0.5) !important; color: #ffe2b0; box-shadow: 0 0 14px rgba(255,178,36,0.3); }
+.distribution-pill { background: rgba(0,0,0,0.35) !important; box-shadow: inset 0 1px 2px rgba(0,0,0,0.5); }
+.distribution-fill { box-shadow: 0 0 12px currentColor; }
+.variance-card { background: rgba(0,0,0,0.28) !important; border: 1px solid var(--aes-line) !important; border-radius: 14px !important; }
+
+/* ── chart frame — make even a red chart look like a trading terminal ───── */
+#view-dashboard .graph-display, .graph-display {
+    border-radius: 16px !important;
+    background:
+        radial-gradient(120% 90% at 50% 0%, rgba(61,220,255,0.05), transparent 60%),
+        linear-gradient(180deg, #070910, #0a0d16) !important;
+    border: 1px solid var(--aes-line) !important;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.05), inset 0 -30px 50px -30px rgba(0,0,0,0.9), inset 0 0 60px -40px rgba(61,220,255,0.4);
+    padding: 16px 14px 12px !important;
+}
+
+/* ── ERM + decay internals — quiet glass rows ──────────────────────────── */
+#view-dashboard .erm-total div { background: linear-gradient(180deg,#fff,#cfd6ea); -webkit-background-clip:text; background-clip:text; -webkit-text-fill-color:transparent; }
+#view-dashboard .erm-subject-row { background: rgba(255,255,255,0.03) !important; border: 1px solid var(--aes-line) !important; border-radius: 12px !important; }
+#view-dashboard .erm-track { background: rgba(0,0,0,0.4) !important; box-shadow: inset 0 1px 2px rgba(0,0,0,0.5); }
+#view-dashboard .erm-fill { box-shadow: 0 0 12px rgba(139,92,246,0.5); }
+#view-dashboard .erm-sparkline-col { background: rgba(255,255,255,0.025) !important; border: 1px solid var(--aes-line) !important; border-radius: 14px !important; }
+#view-dashboard .decay-legend .legend-chip { background: rgba(255,255,255,0.03); border: 1px solid var(--aes-line); }
+
+/* ── 6. COHESIVE APP-WIDE ACCENT (buttons · bars · lock-in ring) ────────── */
+.btn-primary, .btn-save-glow, .ingestion-toggle-btn.active, .sr-submit-btn, .sr-confirm-btn, .cpcc-save-btn {
+    background: linear-gradient(100deg, var(--aes-amber), var(--aes-amber2)) !important;
+    color: #1a1206 !important; box-shadow: 0 6px 20px -8px rgba(255,122,26,0.6), inset 0 1px 0 rgba(255,255,255,0.3) !important;
+}
+.btn-primary:hover, .sr-submit-btn:hover { filter: brightness(1.08); box-shadow: 0 10px 26px -8px rgba(255,122,26,0.7) !important; }
+.btn-secondary { background: rgba(255,255,255,0.06) !important; border: 1px solid var(--aes-line) !important; }
+.btn-secondary:hover { border-color: rgba(61,220,255,0.5) !important; box-shadow: 0 0 16px rgba(61,220,255,0.2); }
+.progress-bar-fill, .chapter-progress-fill, .loading-fill { background: linear-gradient(90deg, var(--aes-amber), var(--aes-amber2), var(--aes-cyan)) !important; background-size: 200% 100%; }
+.glow-wrapper::before { background: conic-gradient(from 0deg, transparent 20%, var(--aes-amber) 42%, var(--aes-amber2) 55%, var(--aes-cyan) 72%, transparent 92%) !important; }
+.text-track-badge { background: linear-gradient(90deg, var(--aes-amber), var(--aes-amber2)) !important; }
+
+/* ── 7. DOODLE-PAD TOOLBAR — make it look intentional, dim when idle ────── */
+#scratchpad-toolbar { background: rgba(14,16,24,0.8) !important; -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px); border: 1px solid var(--aes-line) !important; box-shadow: 0 10px 30px -12px rgba(0,0,0,0.8) !important; }
+body:not(.scratchpad-active) #scratchpad-root { opacity: 0.4; transition: opacity .25s; }
+body:not(.scratchpad-active) #scratchpad-root:hover { opacity: 1; }
+.sp-btn { border: 1px solid var(--aes-line) !important; }
+
+/* ── 8. CALM MOTION for reduced-motion users ───────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+    body::before, #view-dashboard .dash-card-tracker { animation: none !important; }
+}
