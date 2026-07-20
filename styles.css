@@ -4344,3 +4344,9 @@ body.bento-dragging #view-dashboard .dash-card.dash-card-tracker {
 
 /* 5) Tiny screens — keep the drawer header tidy. */
 @media (max-width: 480px) { .sr-hide-img-btn { padding: 6px 8px; font-size: 10px; } }
+
+/* ════════════════════════════════════════════════════════════════════════
+   Nuke the injected "TODAY'S LOOP" sidebar box (created at runtime by CK_ENGINE).
+   ════════════════════════════════════════════════════════════════════════ */
+.nav-ck-loop,
+.sidebar.collapsed .nav-ck-loop { display: none !important; }
