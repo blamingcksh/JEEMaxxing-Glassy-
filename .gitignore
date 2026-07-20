@@ -17,12 +17,24 @@ venv/
 .venv/
 .env
 .env.local
-.env.*
+*.env.*
 
 # Build directories
 dist/
 build/
 target/
+*.jar
+*.war
+
+# Python specific
+*.pyc
+__pycache__/
+.pytest_cache/
+.mypy_cache/
+.coverage
+coverage/
+
+# Logs and temp files
 *.log
 *.tmp
 *.swp
@@ -31,24 +43,14 @@ target/
 # Editors
 .vscode/
 .idea/
+*.swp
+*.swo
 
-# System files
+# OS generated files
 .DS_Store
 Thumbs.db
 
-# Coverage
-coverage/
-htmlcov/
-.coverage
-
-# Python specific
-.mypy_cache/
-.pytest_cache/
-
-# Gradle
-.gradle/
-
-# Compressed files
+# Compression files
 *.zip
 *.gz
 *.tar
@@ -71,4 +73,14 @@ htmlcov/
 *.tar.bz2
 *.tar.xz
 *.tar.zst
+
+# Gradle
+.gradle/
+
+# Coverage
+coverage/
+htmlcov/
+
+# Jupyter
+.ipynb_checkpoints/
 ```
