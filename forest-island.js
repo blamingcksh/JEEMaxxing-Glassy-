@@ -359,13 +359,11 @@
     dummy = new THREE.Object3D();
     for (var k in geos) { var m = new THREE.InstancedMesh(geos[k], itreeMat, CAP); m.frustumCulled = false; m.count = 0; m.instanceMatrix.setUsage(THREE.DynamicDrawUsage); iScene.add(m); iMeshes[k] = m; }
 
-    sizeCanvas(); iApplyTOD(realTOD());
+        sizeCanvas(); iApplyTOD(realTOD());
 
     // Pre-expand the island based on current live counts
     var liveNow = readLiveCounts();
     preExpandForCount((liveNow.physics || 0) + (liveNow.chemistry || 0) + (liveNow.maths || 0));
-
-    syncToLive();
 
     window.__forestIslandAPI = {
       version: 3,
@@ -402,7 +400,7 @@
     window.__forestIslandAPI.initialSync = false;
   }
 
-  function ensureIslandBuilt() { if (iBuilt || iBuilding) return; iBuilding = true; loadThree().then(function (m){ THREE = m; try { buildIsland(); iBuilt = true; if (iVisible) startILoop(); } catch (e) { toast('Daily island failed: ' + (e && e.message || e)); restoreMomentum(); } iBuilding = false; }).catch(function (e){ toast('Could not load 3D for the daily island; momentum graph restored.'); restoreMomentum(); iBuilding = false; }); }
+  function ensureIslandBuilt() { if (iBuilt || iBuilding) return; iBuilding = true; loadThree().then(function (m){ THREE = m; try { iBuilt = true; buildIsland(); if (iVisible) startILoop(); } catch (e) { iBuilt = false; toast('Daily island failed: ' + (e && e.message || e)); restoreMomentum(); } iBuilding = false; }).catch(function (e){ toast('Could not load 3D for the daily island; momentum graph restored.'); restoreMomentum(); iBuilding = false; }); }
 
   function writeIsland(k, s, g) { if (!iMeshes[k]) return; var sc = Math.max(0.0001, s.baseScale * g); dummy.position.set(s.x, s.y-0.05, s.z); dummy.rotation.set(s.leanX, s.rot, s.leanZ); dummy.scale.set(s.sxz*sc, s.sy*sc, s.sxz*sc); dummy.updateMatrix(); iMeshes[k].setMatrixAt(s.iid, dummy.matrix); }
 
