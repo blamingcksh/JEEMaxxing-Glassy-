@@ -175,11 +175,22 @@ function readLiveCounts() {
     var e = document.getElementById(id);
     return e ? (parseInt(e.textContent, 10) || 0) : 0;
   }
-  return {
+
+  var live = {
     physics: g('physics-count'),
     chemistry: g('chemistry-count'),
     maths: g('maths-count')
   };
+
+  try {
+    if (window.solved) {
+      live.physics = Math.max(live.physics, parseInt(window.solved.physics, 10) || 0);
+      live.chemistry = Math.max(live.chemistry, parseInt(window.solved.chemistry, 10) || 0);
+      live.maths = Math.max(live.maths, parseInt(window.solved.maths, 10) || 0);
+    }
+  } catch (e) {}
+
+  return live;
 }
 
 function getDailyCounts(dateStr) {
@@ -262,11 +273,7 @@ function solvedBankCount() {
 
 function fullSig() {
   var c = readLiveCounts();
-  var store = '';
-  try { store = localStorage.getItem(LS_DAILY) || ''; } catch (e) {}
-
-  return store +
-    '|' + c.physics + ',' + c.chemistry + ',' + c.maths +
+  return c.physics + ',' + c.chemistry + ',' + c.maths +
     '|' + getBank().length +
     '|' + solvedBankCount();
 }
@@ -1057,7 +1064,8 @@ function computeData() {
   var eloSum = 0;
   var maxElo = 0;
 
-  var solvedByDate = {};
+  var todayKey = todayISO();
+  var solvedToday = { physics: 0, chemistry: 0, maths: 0 };
 
   function addStats(q) {
     var subj = normSub(q.subject);
@@ -1078,8 +1086,7 @@ function computeData() {
 
     if (t != null) {
       var dk = dateKeyFromMs(t);
-      if (!solvedByDate[dk]) solvedByDate[dk] = { physics: 0, chemistry: 0, maths: 0 };
-      solvedByDate[dk][subj]++;
+      if (dk === todayKey) solvedToday[subj]++;
     }
 
     var inCurrent;
@@ -1099,30 +1106,23 @@ function computeData() {
     }
   }
 
-  var dates = allDailyDates();
-  for (var di = 0; di < dates.length; di++) {
-    var dateStr = dates[di];
-    var ms = new Date(dateStr + 'T12:00:00').getTime();
-    if (isNaN(ms)) continue;
+  var live = readLiveCounts();
+  var todayMs = new Date(todayKey + 'T12:00:00').getTime();
 
-    if (ms < range.start.getTime() || ms > range.end.getTime()) continue;
+  var includeToday =
+    (state.endDate === todayKey) &&
+    (todayMs >= range.start.getTime() && todayMs <= range.end.getTime());
 
-    var counts = getDailyCounts(dateStr);
-    var solved = solvedByDate[dateStr] || { physics: 0, chemistry: 0, maths: 0 };
-
+  if (includeToday) {
     ['physics', 'chemistry', 'maths'].forEach(function (subj) {
-      var extra = Math.max(0, (counts[subj] || 0) - (solved[subj] || 0));
+      var extra = Math.max(0, (live[subj] || 0) - (solvedToday[subj] || 0));
 
       for (var n = 0; n < extra; n++) {
-        var sq = makeSynthetic(dateStr, subj, n);
+        var sq = makeSynthetic(subj, n);
         list.push(sq);
         addStats(sq);
       }
     });
-  }
-
-  if (range.prevStart) {
-    prevCount += countSyntheticInRange(solvedByDate, range.prevStart, range.prevEnd);
   }
 
   list.sort(function (a, b) {

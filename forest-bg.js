@@ -90,8 +90,19 @@
   }
 
   function liveTotal() {
-    var c = visualTodayCounts();
-    return c.physics + c.chemistry + c.maths;
+    var domTotal = rc('physics-count') + rc('chemistry-count') + rc('maths-count');
+
+    var appTotal = 0;
+    try {
+      if (window.solved) {
+        appTotal =
+          (parseInt(window.solved.physics, 10) || 0) +
+          (parseInt(window.solved.chemistry, 10) || 0) +
+          (parseInt(window.solved.maths, 10) || 0);
+      }
+    } catch (e) {}
+
+    return Math.max(domTotal, appTotal);
   }
 
   function syntheticElo(dateStr, subj, i) {
@@ -110,7 +121,8 @@
   }
 
   function solvedBank() {
-    var qb = getBankSafe(), o = [];
+    var qb = getBankSafe();
+    var o = [];
     for (var i = 0; i < qb.length; i++) {
       var q = qb[i];
       if (q && q.status === 'solved') o.push(q);
@@ -185,13 +197,7 @@
     return trees;
   }
   function bgSig() {
-    var storeSig = '';
-    try { storeSig = localStorage.getItem(LS_DAILY) || ''; } catch (e) {}
-
-    return (window.questionBank ? window.questionBank.length : 0) +
-      '|' + solvedBank().length +
-      '|' + liveTotal() +
-      '|' + storeSig;
+    return getBankSafe().length + '|' + solvedBank().length + '|' + liveTotal();
   }
 
   var THREE = null, renderer, scene, camera, env = null, treeMat;
@@ -234,7 +240,32 @@
   function goldenGeo(){ var t=paint(new THREE.CylinderGeometry(0.10,0.17,0.95,6).translate(0,0.47,0),0.32,0.20,0.11); var d1=paintGrad(new THREE.DodecahedronGeometry(0.78,0).translate(0,1.5,0),[0.85,0.46,0.02],[1.0,0.72,0.06]); var d2=paintGrad(new THREE.DodecahedronGeometry(0.50,0).translate(-0.2,2.1,-0.1),[0.95,0.60,0.04],[1.0,0.84,0.12]); return mergeGeos([t,d1,d2]); }
   function oakGeo(){ var t=paint(new THREE.CylinderGeometry(0.22,0.42,2.4,7).translate(0,1.2,0),0.16,0.11,0.07); var c1=paintGrad(new THREE.IcosahedronGeometry(1.7,1).scale(1.25,0.95,1.25).translate(0,3.1,0),[0.06,0.16,0.05],[0.13,0.30,0.09]); var c2=paintGrad(new THREE.IcosahedronGeometry(1.35,1).scale(1.2,0.9,1.2).translate(0.7,3.9,0.4),[0.08,0.20,0.06],[0.16,0.36,0.12]); var c3=paintGrad(new THREE.IcosahedronGeometry(1.2,1).scale(1.15,0.9,1.15).translate(-0.6,3.8,-0.3),[0.07,0.18,0.06],[0.15,0.34,0.11]); var c4=paintGrad(new THREE.IcosahedronGeometry(1.0,1).scale(1.1,0.85,1.1).translate(0.1,4.5,0.1),[0.10,0.24,0.07],[0.19,0.42,0.14]); return mergeGeos([t,c1,c2,c3,c4]); }
 
-  function buildSpots(half) { var sp = 2.4, spots = []; for (var x = -half; x <= half; x += sp) for (var z = -half; z <= half; z += sp) { var h = heightAt(x, z); if (h < WL + 0.25) continue; var hx = heightAt(x+0.6,z)-heightAt(x-0.6,z), hz = heightAt(x,z+0.6)-heightAt(x,z-0.6); if (Math.hypot(hx,hz)/1.2 > 0.6) continue; spots.push({ x:x, y:h, z:z }); } return spots; }
+  function buildSpots(half) {
+    var sp = 2.4;
+    var spots = [];
+
+    for (var x = -half; x <= half; x += sp) {
+      for (var z = -half; z <= half; z += sp) {
+        var h = heightAt(x, z);
+        if (h < WL + 0.25) continue;
+
+        var hx = heightAt(x + 0.6, z) - heightAt(x - 0.6, z);
+        var hz = heightAt(x, z + 0.6) - heightAt(x, z - 0.6);
+
+        if (Math.hypot(hx, hz) / 1.2 > 0.6) continue;
+
+        spots.push({ x: x, y: h, z: z });
+      }
+    }
+
+    // IMPORTANT:
+    // Start planting near the centre first, not at the far edge of the world.
+    spots.sort(function (a, b) {
+      return Math.hypot(a.x, a.z) - Math.hypot(b.x, b.z);
+    });
+
+    return spots;
+  }
 
   function buildScene() {
     renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true });
@@ -391,7 +422,7 @@
 
     setInterval(function () {
       if (enabled && built) rebuildIfNeeded(false);
-    }, 1500);
+    }, 1200);
 
     window.addEventListener('storage', function () {
       if (enabled && built) rebuildIfNeeded(true);
