@@ -13,24 +13,21 @@
      solve moves a counter; resets at midnight.
    ============================================================================ */
 /* ============================================================================
-   forest-island.js v2 — daily-reset 3D island that REPLACES the Momentum card.
-   ISOLATED + SAFE: only ever HIDES the original momentum nodes via a class
-   (never deletes them); if the 3D build fails the candlestick graph is
-   restored and a toast explains. The render loop runs ONLY while the card is
-   on screen + the tab is visible, and freezes orbit under reduced-motion.
+   forest-island.js v3 — daily-reset 3D island with real forest spacing,
+   island auto-growth, and saturation boost.
    ----------------------------------------------------------------------------
-   v2 changes:
-   • Tree count is driven by the LIVE dashboard counters (the same numbers the
-     +/- buttons and real solves change), read straight from the DOM and
-     watched by a MutationObserver → trees grow the instant the count moves.
-   • The land is an irregular noise-warped island (not a circle); trees are
-     locked to dry land via a center-out spot allocator (no trees in the sea).
-   • Camera is zoomed in tight + trees bigger → a proper close-up island.
+   v3 changes:
+   • Real forest spacing: minimum distance between trees, extra clearance for oaks.
+   • Island auto-growth: starts bigger, expands when too many trees are planted.
+   • Camera gently zooms out as island grows.
+   • Saturated colours: richer grass/beach/water, shader saturation, tone mapping.
    ============================================================================ */
 (function () {
   'use strict';
   if (window.__forestIslandInit) return; window.__forestIslandInit = true;
-  var CAP = 400, IFRAME = 1000 / 30, LAND_R = 8;
+
+  // ── v3 constants ──────────────────────────────────────────────────────────
+  var CAP = 1000, IFRAME = 1000 / 30, LAND_R = 10, MIN_LAND_R = 10, MAX_LAND_R = 24;
 
   function toast(m) { console.warn('[forest-island]', m); try { var d = document.createElement('div'); d.textContent = '⚠ ' + m; Object.assign(d.style, { position:'fixed', left:'50%', bottom:'14px', transform:'translateX(-50%)', zIndex:'60', background:'rgba(20,16,8,.92)', border:'1px solid rgba(255,178,36,.4)', color:'#ffd9a0', padding:'8px 14px', borderRadius:'10px', font:'12px/1.4 monospace', maxWidth:'88vw', boxShadow:'0 8px 24px rgba(0,0,0,.6)', pointerEvents:'none' }); document.body.appendChild(d); setTimeout(function(){ d.style.transition='opacity .5s'; d.style.opacity='0'; setTimeout(function(){ if (d.parentNode) d.parentNode.removeChild(d); }, 600); }, 6000); } catch (_) {} }
   function el(tag, a) { var n = document.createElement(tag); if (a) for (var k in a) { if (k === 'html') n.innerHTML = a[k]; else if (k === 'class') n.className = a[k]; else n.setAttribute(k, a[k]); } return n; }
@@ -53,6 +50,160 @@
     return Math.max(-0.5, dome + hills + beach);
   }
 
+  /* ── v3 spacing / expansion / saturation helpers ── */
+  function saturateMat(mat, amt) {
+    mat.onBeforeCompile = function (sh) {
+      sh.uniforms.uSat = { value: amt };
+      sh.fragmentShader = 'uniform float uSat;\n' + sh.fragmentShader.replace(
+        '#include <color_fragment>',
+        "#include <color_fragment>\n float lum=dot(diffuseColor.rgb, vec3(0.299,0.587,0.114));\n diffuseColor.rgb = mix(vec3(lum), diffuseColor.rgb, uSat);"
+      );
+    };
+  }
+
+  function rebuildTerrain() {
+    if (!THREE || !iScene) return;
+    if (!iEnv) iEnv = {};
+
+    if (iEnv.landMesh) {
+      iScene.remove(iEnv.landMesh);
+      if (iEnv.landMesh.geometry) iEnv.landMesh.geometry.dispose();
+      if (iEnv.landMesh.material) iEnv.landMesh.material.dispose();
+    }
+
+    if (iEnv.waterMesh) {
+      iScene.remove(iEnv.waterMesh);
+      if (iEnv.waterMesh.geometry) iEnv.waterMesh.geometry.dispose();
+      if (iEnv.waterMesh.material) iEnv.waterMesh.material.dispose();
+    }
+
+    var S = LAND_R * 1.5;
+    var seg = Math.min(140, Math.max(96, Math.round(LAND_R * 9)));
+
+    var lg = new THREE.PlaneGeometry(S * 2, S * 2, seg, seg);
+    lg.rotateX(-Math.PI / 2);
+
+    var lp = lg.attributes.position;
+    var lc = new Float32Array(lp.count * 3);
+
+    for (var i = 0; i < lp.count; i++) {
+      var x = lp.getX(i), z = lp.getZ(i), h = iHeight(x, z);
+      lp.setY(i, h);
+
+      var r = Math.hypot(x, z);
+      var th = Math.atan2(z, x);
+      var t = Math.min(1, r / coastR(th));
+
+      // more saturated terrain palette
+      if (h < -0.1) {
+        lc[i*3] = 0.36; lc[i*3+1] = 0.28; lc[i*3+2] = 0.16; // wet sand
+      } else if (t > 0.78) {
+        lc[i*3] = 0.74; lc[i*3+1] = 0.62; lc[i*3+2] = 0.34; // beach
+      } else if (h > 1.25) {
+        lc[i*3] = 0.42; lc[i*3+1] = 0.46; lc[i*3+2] = 0.40; // rock
+      } else {
+        var g = 0.44 + 0.34 * (1 - t);                               // grass
+        lc[i*3] = 0.08 + 0.08 * t;
+        lc[i*3+1] = g;
+        lc[i*3+2] = 0.10;
+      }
+    }
+
+    lg.setAttribute('color', new THREE.BufferAttribute(lc, 3));
+    lg.computeVertexNormals();
+
+    var landMat = new THREE.MeshStandardMaterial({
+      vertexColors: true,
+      roughness: 1,
+      flatShading: true
+    });
+    saturateMat(landMat, 1.30);
+
+    iEnv.landMesh = new THREE.Mesh(lg, landMat);
+    iScene.add(iEnv.landMesh);
+
+    var waterMat = new THREE.MeshStandardMaterial({
+      color: 0x23a7d6,
+      transparent: true,
+      opacity: 0.86,
+      roughness: 0.08,
+      metalness: 0.35
+    });
+    saturateMat(waterMat, 1.20);
+
+    iEnv.waterMesh = new THREE.Mesh(
+      new THREE.CircleGeometry(Math.max(44, LAND_R * 3.4), 64).rotateX(-Math.PI / 2),
+      waterMat
+    );
+    iEnv.waterMesh.position.y = -0.2;
+    iScene.add(iEnv.waterMesh);
+    iEnv.water = iEnv.waterMesh; // keep compatibility
+
+    // spaced dry-land candidate field
+    var dry = [];
+    var step = 1.0;
+
+    for (var gx = -S; gx <= S; gx += step) {
+      for (var gz = -S; gz <= S; gz += step) {
+        var hh = iHeight(gx, gz);
+        if (hh > 0.28) dry.push({ x: gx, y: hh, z: gz, d: Math.hypot(gx, gz) });
+      }
+    }
+
+    dry.sort(function (a, b) { return a.d - b.d; });
+    iEnv.drySpots = dry;
+  }
+
+  function landCapacity() {
+    // rough capacity estimate for spaced planting
+    return Math.floor(Math.PI * Math.pow(LAND_R * 0.78, 2) / 2.3);
+  }
+
+  function allPlacedTrees() {
+    var out = [];
+    for (var k in iState) {
+      if (Object.prototype.hasOwnProperty.call(iState, k)) out = out.concat(iState[k]);
+    }
+    return out;
+  }
+
+  function preExpandForCount(n) {
+    while (landCapacity() < n && LAND_R < MAX_LAND_R) {
+      LAND_R = Math.min(MAX_LAND_R, LAND_R + 2);
+      rebuildTerrain();
+    }
+  }
+
+  function expandIsland() {
+    if (!iBuilt || LAND_R >= MAX_LAND_R) return;
+
+    LAND_R = Math.min(MAX_LAND_R, LAND_R + 2);
+    rebuildTerrain();
+
+    // re-seat existing trees on the new terrain
+    for (var k in iState) {
+      var arr = iState[k];
+      for (var i = 0; i < arr.length; i++) {
+        var t = arr[i];
+        t.y = Math.max(0.28, iHeight(t.x, t.z));
+        writeIsland(k, t, (t.cur != null ? t.cur : 1));
+      }
+      if (iMeshes[k]) iMeshes[k].instanceMatrix.needsUpdate = true;
+    }
+
+    // gentle camera pull-back as the island grows
+    if (iCam) {
+      var grow = Math.max(0, LAND_R - MIN_LAND_R);
+      var camD = 9.4 + grow * 0.55;
+      iCam.position.set(
+        Math.sin(iOrbit) * camD,
+        6.2 + grow * 0.18,
+        Math.cos(iOrbit) * camD
+      );
+      iCam.lookAt(0, 1.25, 0);
+    }
+  }
+
   /* ── read the LIVE daily counters (the single source of truth) ── */
   function readLiveCounts() {
     function g(id) { var e = document.getElementById(id); return e ? (parseInt(e.textContent, 10) || 0) : 0; }
@@ -69,7 +220,9 @@
   var THREE = null, iRenderer, iScene, iCam, iEnv = null, itreeMat;
   var iMeshes = {}, iState = { physics:[], chemistry:[], maths:[], oak:[] };
   var plantedBySubj = { physics:0, chemistry:0, maths:0 };
-  var occupied = null, spotCursor = 0;          // center-out, overlap-free placement
+  // occupied and spotCursor are no longer used with distance-based allocator,
+  // but keep to avoid errors if referenced.
+  var occupied = null, spotCursor = 0;
   var card, host, cvs, countEl, emptyEl;
   var iBuilt = false, iBuilding = false, iVisible = false;
   var iRaf = null, iLast = 0, iLastT = 0, iEl = 0, iOrbit = 0, iLastTOD = 0;
@@ -90,53 +243,129 @@
 
   function sizeCanvas() { if (!iRenderer || !cvs) return; var w = cvs.clientWidth || 300, h = cvs.clientHeight || 260, dpr = Math.min(devicePixelRatio, 2); iRenderer.setSize(w, h, false); iRenderer.setPixelRatio(dpr); iCam.aspect = w/h; iCam.updateProjectionMatrix(); }
 
-  /* ── center-out, overlap-free dry-land allocator ── */
-  function allocSpot() {
-    var ds = iEnv && iEnv.drySpots; if (!ds || !ds.length) return { idx:-1, x:0, y:0, z:0 };
-    for (var k = 0; k < ds.length; k++) { var idx = (spotCursor + k) % ds.length; if (!occupied.has(idx)) { occupied.add(idx); spotCursor = (idx + 1) % ds.length; return { idx:idx, x:ds[idx].x, y:ds[idx].y, z:ds[idx].z }; } }
-    var d = ds[0]; return { idx:-1, x:d.x + (Math.random()-0.5), y:d.y, z:d.z + (Math.random()-0.5) };
+  /* ── v3 distance-based allocator ── */
+  function allocSpot(minDist) {
+    var ds = iEnv && iEnv.drySpots;
+    if (!ds || !ds.length) return null;
+
+    minDist = minDist || 1.85;
+
+    var trees = allPlacedTrees();
+    var cell = Math.max(1.25, minDist);
+    var grid = {};
+
+    function gkey(x, z) {
+      return Math.floor(x / cell) + ',' + Math.floor(z / cell);
+    }
+
+    for (var i = 0; i < trees.length; i++) {
+      var t = trees[i];
+      var key = gkey(t.x, t.z);
+      if (!grid[key]) grid[key] = [];
+      grid[key].push(t);
+    }
+
+    function tooClose(x, z) {
+      var cx = Math.floor(x / cell);
+      var cz = Math.floor(z / cell);
+      var md2 = minDist * minDist;
+
+      for (var dx = -1; dx <= 1; dx++) {
+        for (var dz = -1; dz <= 1; dz++) {
+          var arr = grid[(cx + dx) + ',' + (cz + dz)];
+          if (!arr) continue;
+
+          for (var j = 0; j < arr.length; j++) {
+            var ddx = arr[j].x - x;
+            var ddz = arr[j].z - z;
+            if (ddx * ddx + ddz * ddz < md2) return true;
+          }
+        }
+      }
+
+      return false;
+    }
+
+    // start near the middle, but let spacing force the forest outward naturally
+    var start = (Math.random() * Math.min(64, ds.length)) | 0;
+
+    for (var k = 0; k < ds.length; k++) {
+      var idx = (start + k) % ds.length;
+      var s = ds[idx];
+
+      var x = s.x + (Math.random() - 0.5) * 0.7;
+      var z = s.z + (Math.random() - 0.5) * 0.7;
+      var y = iHeight(x, z);
+
+      if (y < 0.28) continue;
+      if (tooClose(x, z)) continue;
+
+      return { idx: idx, x: x, y: y, z: z };
+    }
+
+    return null;
   }
-  function freeSpot(idx) { if (idx == null || idx < 0) return; occupied.delete(idx); if (idx < spotCursor) spotCursor = idx; }
+
+  function freeSpot(idx) {
+    // no-op: spacing is now distance-based, not slot-based
+  }
 
   function buildIsland() {
     iRenderer = new THREE.WebGLRenderer({ canvas:cvs, antialias:true, alpha:true });
     iRenderer.setClearColor(0x000000, 0);
-    iScene = new THREE.Scene();                                   // no fog → crisp zoom
-    iCam = new THREE.PerspectiveCamera(46, 1, 0.1, 400); iCam.position.set(0, 6.2, 9.4); iCam.lookAt(0, 1.25, 0);
+    iRenderer.toneMapping = THREE.ACESFilmicToneMapping;
+    iRenderer.toneMappingExposure = 1.16;
+    iScene = new THREE.Scene();
+    iCam = new THREE.PerspectiveCamera(46, 1, 0.1, 400);
+    iCam.position.set(0, 6.2, 9.4);
+    iCam.lookAt(0, 1.25, 0);
+
     var skyMat = new THREE.ShaderMaterial({ side:THREE.BackSide, depthWrite:false, uniforms:{ top:{value:new THREE.Color()}, bottom:{value:new THREE.Color()}, off:{value:6}, exp:{value:0.62} }, vertexShader:'varying vec3 vW; void main(){ vec4 w=modelMatrix*vec4(position,1.); vW=w.xyz; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}', fragmentShader:'uniform vec3 top,bottom; uniform float off,exp; varying vec3 vW; void main(){ float h=normalize(vW+vec3(0.,off,0.)).y; float t=pow(max(h,0.),exp); gl_FragColor=vec4(mix(bottom,top,t),1.);}' });
     iEnv = { skyTop: skyMat.uniforms.top.value, skyBot: skyMat.uniforms.bottom.value };
     iScene.add(new THREE.Mesh(new THREE.SphereGeometry(180, 24, 12), skyMat));
     iEnv.hemi = new THREE.HemisphereLight(0x8aa0b8, 0x3a3020, 0.7); iScene.add(iEnv.hemi);
     iEnv.sun = new THREE.DirectionalLight(0xfff2e0, 1.1); iEnv.sun.position.set(10,40,20); iScene.add(iEnv.sun);
     iScene.add(new THREE.AmbientLight(0xffffff, 0.12));
-    // irregular land heightfield (extends past the coast so the skirt sinks into the sea)
-    var S = LAND_R * 1.5, lg = new THREE.PlaneGeometry(S*2, S*2, 96, 96); lg.rotateX(-Math.PI/2);
-    var lp = lg.attributes.position, lc = new Float32Array(lp.count*3);
-    for (var i = 0; i < lp.count; i++) {
-      var x = lp.getX(i), z = lp.getZ(i), h = iHeight(x, z); lp.setY(i, h);
-      var r = Math.hypot(x, z), th = Math.atan2(z, x), t = Math.min(1, r / coastR(th));
-      if (h < -0.1) { lc[i*3]=0.30; lc[i*3+1]=0.26; lc[i*3+2]=0.16; }            // wet sand under the surf
-      else if (t > 0.78) { lc[i*3]=0.62; lc[i*3+1]=0.52; lc[i*3+2]=0.30; }        // beach
-      else if (h > 1.25) { lc[i*3]=0.40; lc[i*3+1]=0.42; lc[i*3+2]=0.38; }        // rocky crown
-      else { var g = 0.30 + 0.30*(1-t); lc[i*3]=0.14+0.06*t; lc[i*3+1]=g; lc[i*3+2]=0.12; }  // grass
-    }
-    lg.setAttribute('color', new THREE.BufferAttribute(lc, 3)); lg.computeVertexNormals();
-    iScene.add(new THREE.Mesh(lg, new THREE.MeshStandardMaterial({ vertexColors:true, roughness:1, flatShading:true })));
-    // sea
-    var water = new THREE.Mesh(new THREE.CircleGeometry(40, 48).rotateX(-Math.PI/2), new THREE.MeshStandardMaterial({ color:0x244a60, transparent:true, opacity:0.82, roughness:0.12, metalness:0.4 }));
-    water.position.y = -0.2; iScene.add(water); iEnv.water = water;
-    // dry-land spots (centre-out) for tree placement
-    var dry = [], step = 0.6;
-    for (var gx = -S; gx <= S; gx += step) for (var gz = -S; gz <= S; gz += step) { var hh = iHeight(gx, gz); if (hh > 0.25) dry.push({ x:gx, y:hh, z:gz, d:Math.hypot(gx, gz) }); }
-    dry.sort(function (a, b) { return a.d - b.d; }); iEnv.drySpots = dry;
-    occupied = new Set(); spotCursor = 0;
-    // trees
-    itreeMat = new THREE.MeshStandardMaterial({ vertexColors:true, roughness:0.82, metalness:0, flatShading:true });
-    itreeMat.onBeforeCompile = function (sh){ sh.uniforms.uTime={value:0}; sh.vertexShader='uniform float uTime;\n'+sh.vertexShader.replace('#include <begin_vertex>', "#include <begin_vertex>\n float sw=max(transformed.y-0.7,0.0);\n float ph=instanceMatrix[3][0]*0.6+instanceMatrix[3][2]*0.6;\n transformed.x+=sin(uTime*1.3+ph)*sw*0.03;\n transformed.z+=cos(uTime*1.0+ph)*sw*0.024;"); itreeMat.userData.shader=sh; };
+
+    // build terrain using v3 helpers
+    rebuildTerrain();
+
+    // Trees
+    itreeMat = new THREE.MeshStandardMaterial({
+      vertexColors: true,
+      roughness: 0.78,
+      metalness: 0.02,
+      flatShading: true
+    });
+
+    itreeMat.onBeforeCompile = function (sh) {
+      sh.uniforms.uTime = { value: 0 };
+      sh.uniforms.uSat = { value: 1.45 };
+
+      sh.vertexShader = 'uniform float uTime;\n' + sh.vertexShader.replace(
+        '#include <begin_vertex>',
+        "#include <begin_vertex>\n float sw=max(transformed.y-0.7,0.0);\n float ph=instanceMatrix[3][0]*0.6+instanceMatrix[3][2]*0.6;\n transformed.x+=sin(uTime*1.3+ph)*sw*0.03;\n transformed.z+=cos(uTime*1.0+ph)*sw*0.024;"
+      );
+
+      sh.fragmentShader = 'uniform float uSat;\n' + sh.fragmentShader.replace(
+        '#include <color_fragment>',
+        "#include <color_fragment>\n float lum=dot(diffuseColor.rgb, vec3(0.299,0.587,0.114));\n diffuseColor.rgb = mix(vec3(lum), diffuseColor.rgb, uSat);"
+      );
+
+      itreeMat.userData.shader = sh;
+    };
+
     var geos = { physics:spruceGeo(), chemistry:roundGeo(), maths:goldenGeo(), oak:oakGeo() };
     dummy = new THREE.Object3D();
     for (var k in geos) { var m = new THREE.InstancedMesh(geos[k], itreeMat, CAP); m.frustumCulled = false; m.count = 0; m.instanceMatrix.setUsage(THREE.DynamicDrawUsage); iScene.add(m); iMeshes[k] = m; }
+
     sizeCanvas(); iApplyTOD(realTOD());
+
+    // Pre-expand the island based on current live counts
+    var liveNow = readLiveCounts();
+    preExpandForCount((liveNow.physics || 0) + (liveNow.chemistry || 0) + (liveNow.maths || 0));
+
+    syncToLive();
 
     window.__forestIslandAPI = {
       version: 3,
@@ -172,19 +401,41 @@
     syncToLive();
     window.__forestIslandAPI.initialSync = false;
   }
+
   function ensureIslandBuilt() { if (iBuilt || iBuilding) return; iBuilding = true; loadThree().then(function (m){ THREE = m; try { buildIsland(); iBuilt = true; if (iVisible) startILoop(); } catch (e) { toast('Daily island failed: ' + (e && e.message || e)); restoreMomentum(); } iBuilding = false; }).catch(function (e){ toast('Could not load 3D for the daily island; momentum graph restored.'); restoreMomentum(); iBuilding = false; }); }
 
   function writeIsland(k, s, g) { if (!iMeshes[k]) return; var sc = Math.max(0.0001, s.baseScale * g); dummy.position.set(s.x, s.y-0.05, s.z); dummy.rotation.set(s.leanX, s.rot, s.leanZ); dummy.scale.set(s.sxz*sc, s.sy*sc, s.sxz*sc); dummy.updateMatrix(); iMeshes[k].setMatrixAt(s.iid, dummy.matrix); }
+
   function addIsland(q, instant) {
     if (!iBuilt) return;
     var oak = (q.qElo || 1200) >= 2300, k = oak ? 'oak' : q.subject;
-    var sp = allocSpot();
+    var minD = oak ? 2.7 : 1.85;
+
+    var sp = allocSpot(minD);
+
+    if (!sp) {
+      expandIsland();
+      sp = allocSpot(minD) || allocSpot(minD * 0.82);
+    }
+
+    if (!sp) {
+      var fb = (iEnv.drySpots && iEnv.drySpots.length)
+        ? iEnv.drySpots[(Math.random() * iEnv.drySpots.length) | 0]
+        : { x: 0, y: 0.5, z: 0 };
+
+      sp = {
+        idx: -1,
+        x: fb.x + (Math.random() - 0.5) * 0.8,
+        y: Math.max(0.28, iHeight(fb.x, fb.z)),
+        z: fb.z + (Math.random() - 0.5) * 0.8
+      };
+    }
+
     var base = (0.95 + Math.min(1, Math.max(0, ((q.qElo||1200)-800)/2200)) * 0.95) * (oak ? 1.0 : 1.0);
     var s = {
       x: sp.x,
       y: sp.y,
       z: sp.z,
-      spotIdx: sp.idx,
       subject: k,
       qElo: q.qElo || 1200,
       oak: oak,
@@ -208,22 +459,31 @@
       }
     }
   }
+
   function iTotal() { return plantedBySubj.physics + plantedBySubj.chemistry + plantedBySubj.maths; }
   function setCount(n) { if (countEl) countEl.textContent = n; if (emptyEl) emptyEl.style.display = n > 0 ? 'none' : 'flex'; }
 
-  /* ── the heart of v2: match the island to the live counters ── */
+  /* ── sync to live counters, with island expansion if needed ── */
   function syncToLive() {
     if (!iBuilt) return;
     var live = readLiveCounts(), today = todayBySubject();
+
+    var totalWant = (live.physics || 0) + (live.chemistry || 0) + (live.maths || 0);
+    while (iBuilt && landCapacity() < totalWant && LAND_R < MAX_LAND_R) {
+      expandIsland();
+    }
+
     ['physics', 'chemistry', 'maths'].forEach(function (subj) {
       var want = live[subj] || 0, have = plantedBySubj[subj];
-      while (have < want) {                                       // grow the delta
+      while (have < want) {
         var q = (today[subj] && today[subj][have]) || { subject:subj, qElo:1200 };
         addIsland(q, false); have++; plantedBySubj[subj] = have;
       }
-      if (have > want) {                                          // shrink the delta (pop the tail)
+      if (have > want) {
         var drop = have - want;
-        for (var d = 0; d < drop; d++) { var rem = iState[subj].pop(); if (rem) freeSpot(rem.spotIdx); }
+        for (var d = 0; d < drop; d++) {
+          iState[subj].pop(); // no need to free spot
+        }
         plantedBySubj[subj] = want;
         if (iMeshes[subj]) { iMeshes[subj].count = iState[subj].length; iMeshes[subj].instanceMatrix.needsUpdate = true; }
       }
@@ -236,7 +496,15 @@
     iRaf = requestAnimationFrame(iframe);
     if (t - iLast < IFRAME) return; var dt = Math.min(0.05, (t - iLastT)/1000 || 0); iLastT = t; iLast = t; iEl += dt;
     if (motionOK()) iOrbit += dt * 0.12;
-    iCam.position.set(Math.sin(iOrbit)*9.4, 6.2, Math.cos(iOrbit)*9.4); iCam.lookAt(0, 1.25, 0);
+
+    var camD = 9.4 + Math.max(0, LAND_R - MIN_LAND_R) * 0.55;
+    iCam.position.set(
+      Math.sin(iOrbit) * camD,
+      6.2 + Math.max(0, LAND_R - MIN_LAND_R) * 0.18,
+      Math.cos(iOrbit) * camD
+    );
+    iCam.lookAt(0, 1.25, 0);
+
     if (t - iLastTOD > 30000) { iLastTOD = t; iApplyTOD(realTOD()); }
     if (iEnv.water) iEnv.water.position.y = -0.2 + Math.sin(iEl*0.8)*0.02;
     if (itreeMat.userData.shader) itreeMat.userData.shader.uniforms.uTime.value = iEl;
@@ -250,6 +518,7 @@
     }
     iRenderer.render(iScene, iCam);
   }
+
   function startILoop() { if (iRaf == null) { iLast = 0; iRaf = requestAnimationFrame(iframe); } }
 
   function restoreMomentum() { if (!card || !card.__fiOrig) return; card.classList.remove('island-active'); var nodes = card.querySelectorAll('.fi-orig'); for (var i=0;i<nodes.length;i++) nodes[i].classList.remove('fi-orig'); if (host && host.parentNode) host.parentNode.removeChild(host); card.__fiOrig = null; iBuilt = false; }
