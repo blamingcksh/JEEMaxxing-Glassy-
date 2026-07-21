@@ -529,10 +529,7 @@ function scheduleRebuild() {
 }
 
 /* ── three loading ── */
-function ensureThree() {
-  if (THREE) return Promise.resolve(THREE);
-  if (threePromise) return threePromise;
-
+function loadThreeFromCDN() {
   var urls = [
     'https://esm.sh/three@0.160.0',
     'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js',
@@ -555,7 +552,48 @@ function ensureThree() {
     });
   }
 
-  threePromise = tryOne(0);
+  return tryOne(0);
+}
+
+function ensureThree() {
+  if (THREE) return Promise.resolve(THREE);
+  if (threePromise) return threePromise;
+
+  threePromise = new Promise(function (resolve, reject) {
+    function useExistingThree() {
+      try {
+        // Reuse the Three.js instance already loaded by the Daily Grove island.
+        if (window.__forestIslandAPI && window.__forestIslandAPI.THREE) {
+          THREE = window.__forestIslandAPI.THREE;
+          buildTreeAssets();
+          resolve(THREE);
+          return true;
+        }
+      } catch (e) {}
+      return false;
+    }
+
+    // If the island already loaded Three, use it immediately.
+    if (useExistingThree()) return;
+
+    // Otherwise wait briefly for the island to finish loading Three.
+    var waited = 0;
+    var timer = setInterval(function () {
+      waited += 120;
+
+      if (useExistingThree()) {
+        clearInterval(timer);
+        return;
+      }
+
+      // If it still has not loaded, fall back to CDN.
+      if (waited >= 1200) {
+        clearInterval(timer);
+        loadThreeFromCDN().then(resolve, reject);
+      }
+    }, 120);
+  });
+
   return threePromise;
 }
 
