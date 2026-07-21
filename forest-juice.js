@@ -1,4 +1,15 @@
 /* ============================================================================
+   forest-juice.js  ·  flowers · camps · bonfires · grow-juice  (LAB-ONLY!)
+   ----------------------------------------------------------------------------
+   DEPENDENCY MAP — two worlds, never cross the streams:
+     LAB  (forest-lab.html): forest-lab.html · forest-juice.js  ◄── THIS FILE
+     MAIN APP (index.html):  forest-bg.js · forest-island.js · styles.css
+   • DO NOT add this file to index.html. It boots by waiting for
+     window.__forestAPI, which ONLY forest-lab.html exposes — in the app it
+     would just poll forever and do nothing.
+   • In the LAB it augments the running scene through that hook API; every
+     subsystem is try/catch-wrapped so a bug here never blanks the lab.
+   ============================================================================ *//* ============================================================================
    forest-juice.js v2 — isolated "juice" + growth-model + world-dressing layer.
    OPTIONAL & SAFE: augments the running scene via window.__forestAPI. If this
    file fails to load/parse/run, the base forest is UNAFFECTED. Every subsystem
