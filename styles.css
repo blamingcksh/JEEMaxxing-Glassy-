@@ -5148,3 +5148,174 @@ html[data-mode="dusk"] #view-dashboard .dash-card-momentum {
 @media (prefers-reduced-motion: reduce) {
   .dc-time-card, #view-dashboard .dash-card-momentum .kicker::before { animation: none !important; }
 }
+
+/* ════════════════════════════════════════════════════════════════════════
+   PRACTICE MODAL POLISH — quieter cockpit, cleaner question sheet.
+   Pairs with the combo-reset FIX in app.js. Append-only + reversible:
+   delete this block to restore the old look. Scoped to #practice-modal;
+   every control, ring, meter and button stays fully functional.
+   ════════════════════════════════════════════════════════════════════════ */
+
+/* ── Shell: tighter, glassier slab ─────────────────────────────────────── */
+#practice-modal .modal-card {
+  max-width: 780px;
+  padding: 22px 24px 26px;
+  border-radius: 24px;
+  background: linear-gradient(180deg, rgba(17,19,30,0.92), rgba(10,12,19,0.95));
+  -webkit-backdrop-filter: blur(24px) saturate(140%);
+  backdrop-filter: blur(24px) saturate(140%);
+  border: 1px solid rgba(255,255,255,0.10);
+  box-shadow: 0 40px 90px -30px rgba(0,0,0,0.9), inset 0 1px 0 rgba(255,255,255,0.08);
+}
+html[data-mode="dusk"] #practice-modal .modal-card {
+  background: linear-gradient(180deg, rgba(48,52,78,0.92), rgba(36,40,62,0.95));
+}
+
+/* ── Cockpit: one calm glass strip with a clear hierarchy ──────────────── */
+#practice-modal .practice-cockpit {
+  padding: 11px 14px;
+  gap: 10px;
+  border-radius: 18px;
+  background: linear-gradient(180deg, rgba(255,255,255,0.05), rgba(255,255,255,0.015));
+  border: 1px solid rgba(255,255,255,0.09);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.07), 0 12px 30px -22px rgba(0,0,0,0.9);
+}
+html[data-mode="dusk"] #practice-modal .practice-cockpit { --ck-surface: #31364e; }
+#practice-modal .ck-row.ck-top { gap: 14px; justify-content: space-between; align-items: center; }
+
+/* identity */
+#practice-modal .ck-identity { min-width: 118px; gap: 8px; }
+#practice-modal .ck-tier-icon { font-size: 21px; }
+#practice-modal .ck-tier-name { font-size: 12px; }
+#practice-modal .ck-xpbar { width: 92px; height: 4px; }
+#practice-modal .ck-xp-label { font-size: 8.5px; opacity: 0.75; }
+
+/* combo + crit — the hero of the strip */
+#practice-modal .ck-ring { width: 50px; height: 50px; }
+#practice-modal .ck-ring-hole { width: 38px; height: 38px; }
+#practice-modal .ck-combo-x { font-size: 14px; }
+#practice-modal .ck-combo-lbl,
+#practice-modal .ck-session-lbl { font-size: 7px; letter-spacing: 1.1px; opacity: 0.7; }
+#practice-modal .ck-crit { width: 58px; }
+#practice-modal .ck-crit-lbl { font-size: 7px; }
+
+/* streak flame + shields */
+#practice-modal .ck-streak-slot .streak-visualizer { width: 40px; height: 40px; }
+#practice-modal .ck-streak-slot #streak-canvas { width: 40px; height: 40px; }
+#practice-modal .ck-streak-slot .streak-number { font-size: 13px; }
+#practice-modal .ck-shields { font-size: 10.5px; padding: 2px 8px; }
+
+/* session ring — quieter, still readable */
+#practice-modal .ck-session-ring { width: 46px; height: 46px; }
+#practice-modal .ck-session-ring .ck-ring-hole { width: 34px; height: 34px; }
+#practice-modal .ck-session-n { font-size: 10.5px; }
+
+/* focus depth — slim + quiet */
+#practice-modal .ck-depth { min-width: 84px; gap: 3px; }
+#practice-modal .ck-depth-tier { font-size: 8.5px; letter-spacing: 0.8px; opacity: 0.85; }
+#practice-modal .ck-depth-meter { height: 4px; }
+
+/* timer — promoted back to a legible telemetry pill */
+#practice-modal .ck-timer-slot .timer-display-sm {
+  font-size: 14px !important;
+  padding: 4px 12px !important;
+  border-radius: 999px !important;
+  background: rgba(61,220,255,0.08) !important;
+  border: 1px solid rgba(61,220,255,0.28) !important;
+  color: #c9f3ff !important;
+  opacity: 1 !important;
+  font-variant-numeric: tabular-nums;
+  box-shadow: 0 0 14px -4px rgba(61,220,255,0.5);
+}
+
+/* utility buttons — ghost chips, far right */
+#practice-modal .ck-utils { gap: 6px; }
+#practice-modal .ck-utils .hide-toggle {
+  height: 30px !important;
+  padding: 4px 11px !important;
+  font-size: 11px !important;
+  border-radius: 9px !important;
+  background: rgba(255,255,255,0.04) !important;
+  border: 1px solid rgba(255,255,255,0.10) !important;
+  color: var(--text-secondary) !important;
+  transition: background .16s ease, color .16s ease, border-color .16s ease;
+}
+#practice-modal .ck-utils .hide-toggle:hover {
+  background: rgba(255,255,255,0.09) !important;
+  color: #fff !important;
+  border-color: rgba(255,255,255,0.22) !important;
+}
+
+/* ── Question sheet ────────────────────────────────────────────────────── */
+#practice-modal #practice-modal-img {
+  border-radius: 16px !important;
+  border: 1px solid rgba(255,255,255,0.10);
+  box-shadow: 0 14px 34px -18px rgba(0,0,0,0.85);
+}
+#practice-modal #latex-render {
+  text-align: left;
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.07);
+  border-left: 3px solid var(--aes-amber, #ffb224);
+  border-radius: 14px;
+  padding: 16px 18px;
+  margin: 14px 0 4px;
+  font-size: 15px;
+  line-height: 1.75;
+}
+#practice-modal .diagram-hint {
+  border-radius: 10px;
+  background: rgba(61,220,255,0.08);
+  border: 1px solid rgba(61,220,255,0.22);
+}
+
+/* ── MCQ options — clean selectable rows ───────────────────────────────── */
+#practice-modal .mcq-option {
+  text-align: left;
+  background: rgba(255,255,255,0.035);
+  border: 1px solid rgba(255,255,255,0.09);
+  border-radius: 14px;
+  padding: 13px 16px;
+  margin: 9px 0;
+  transition: background .16s ease, border-color .16s ease, transform .16s ease, box-shadow .16s ease;
+}
+#practice-modal .mcq-option:hover {
+  background: rgba(255,255,255,0.07);
+  border-color: rgba(255,255,255,0.20);
+  transform: translateX(3px);
+}
+#practice-modal .mcq-option.selected {
+  background: linear-gradient(90deg, rgba(61,220,255,0.16), rgba(61,220,255,0.03));
+  border-color: rgba(61,220,255,0.55);
+  box-shadow: 0 0 22px -8px rgba(61,220,255,0.55), inset 0 1px 0 rgba(255,255,255,0.08);
+}
+
+/* numeric answer — centered monospace */
+#practice-modal #numeric-answer-input {
+  max-width: 220px;
+  margin: 0 auto;
+  text-align: center;
+  font-family: var(--aes-num, 'Space Grotesk', monospace);
+  font-size: 18px;
+}
+
+/* ── Actions + feedback ────────────────────────────────────────────────── */
+#practice-modal #practice-submit-btn {
+  width: 100%;
+  margin-top: 16px !important;
+  padding: 14px 24px !important;
+  border-radius: 14px !important;
+  font-size: 14px !important;
+  letter-spacing: 0.6px;
+}
+#practice-modal .result-banner { border-radius: 14px; padding: 14px 18px; margin: 16px 0 4px; }
+#practice-modal .show-solution-btn { border-radius: 10px; }
+#practice-modal .elo-shift-chip { margin: 14px auto 2px; }
+
+/* ── Small screens: let the strip wrap instead of cramming ─────────────── */
+@media (max-width: 720px) {
+  #practice-modal .modal-card { padding: 16px 14px 20px; border-radius: 20px; }
+  #practice-modal .ck-row.ck-top { gap: 10px; }
+  #practice-modal .ck-identity { min-width: 0; }
+  #practice-modal .ck-utils { margin-left: auto; }
+}
