@@ -5513,8 +5513,26 @@ window.renderMomentumCandles = renderMomentumCandles;
 
 // Expose state for debugging / cross-module access
 window.bounty = AppState.bounty;
-window.questionBank = AppState.questionBank;
+
+// ── Forest sync fix: expose live state safely ─────────────────────────────
+window.AppState = AppState;
 window.solved = solved;
+
+try {
+  Object.defineProperty(window, 'questionBank', {
+    get: function () {
+      return AppState.questionBank;
+    },
+    set: function (v) {
+      try {
+        AppState.questionBank = v;
+      } catch (e) {}
+    },
+    configurable: true
+  });
+} catch (e) {
+  window.questionBank = AppState.questionBank;
+}
 window.currentSubject = AppState.currentSubject;
 window.currentChapter = AppState.currentChapter;
 window.imageFetchCache = AppState.imageFetchCache;
