@@ -4869,3 +4869,110 @@ html[data-mode="dusk"] .theme-btn { background: rgba(255,250,240,0.09) !importan
   box-shadow: 0 0 16px var(--accent-soft), inset 0 1px 0 rgba(255,255,255,0.12);
 }
 .theme-mode-ic { font-size: 14px; }
+
+/* ════════════════════════════════════════════════════════════════════════
+   DASHBOARD DECLUTTER + LAYOUT FAB — pairs with dashboard-clean.js.
+   Gated on body.dc-active → reversible: delete dashboard-clean.js, its
+   <script> tag, and this block. Chrome is hidden (not removed) so the
+   cat-telemetry loop, streak/date writers and switchTab() never crash.
+   ════════════════════════════════════════════════════════════════════════ */
+
+/* ── Hidden top chrome ─────────────────────────────────────────────────── */
+body.dc-active #cat-banner,
+body.dc-active .cat-banner { display: none !important; }   /* beats switchTab's inline display:flex */
+body.dc-active .header-badges { display: none !important; } /* 📅 date · 🔥 streak · ⏱ time · (cloud moved out) */
+
+/* ── Cloud Link cluster, at home inside the Cloud Storage settings card ── */
+.sync-cluster.dc-cloud-row {
+  width: 100%;
+  margin-top: 6px;
+  justify-content: space-between;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.09);
+  border-radius: 12px;
+}
+
+/* ── Neutralise the fixed-position containing block so the FAB + panel
+      anchor to the viewport instead of the scrolling dashboard ─────────── */
+body.dc-active #view-dashboard { will-change: auto; }
+
+/* ── Pencil FAB (lives inside #view-dashboard → only visible on Home) ──── */
+#dc-layout-fab {
+  position: fixed;
+  right: 22px;
+  bottom: 22px;
+  z-index: 950;                       /* below modals (1000) + drawers */
+  width: 46px;
+  height: 46px;
+  border-radius: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #ffd9a0;
+  background: linear-gradient(180deg, rgba(20,22,32,0.85), rgba(12,14,20,0.92));
+  -webkit-backdrop-filter: blur(16px) saturate(150%);
+  backdrop-filter: blur(16px) saturate(150%);
+  border: 1px solid rgba(255,178,36,0.35);
+  box-shadow: 0 10px 30px -10px rgba(0,0,0,0.8), 0 0 18px -6px rgba(255,178,36,0.45),
+              inset 0 1px 0 rgba(255,255,255,0.08);
+  cursor: pointer;
+  transition: border-color .2s ease, box-shadow .2s ease, color .2s ease,
+              transform .2s ease, background .2s ease;
+}
+#dc-layout-fab:hover {
+  border-color: rgba(255,178,36,0.75);
+  color: #fff;
+  transform: translateY(-2px);
+  box-shadow: 0 14px 34px -10px rgba(0,0,0,0.85), 0 0 26px -4px rgba(255,178,36,0.65),
+              inset 0 1px 0 rgba(255,255,255,0.1);
+}
+#dc-layout-fab svg { transition: transform .25s cubic-bezier(.22,1.2,.36,1); }
+#dc-layout-fab.active {
+  color: #171207;
+  background: linear-gradient(100deg, #ffb224, #ff7a1a);
+  border-color: transparent;
+  box-shadow: 0 10px 30px -8px rgba(255,122,26,0.55);
+}
+#dc-layout-fab.active svg { transform: rotate(-45deg) scale(1.08); }
+
+/* ── Bento toolbar, reborn as a floating glass panel ───────────────────── */
+body.dc-active .bento-toolbar:not(.dc-fab-panel) { display: none !important; } /* no flash pre-adoption */
+.bento-toolbar.dc-fab-panel {
+  position: fixed;
+  right: 22px;
+  bottom: 82px;
+  z-index: 960;
+  display: none;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 10px;
+  width: 238px;
+  margin: 0;
+  padding: 14px;
+  border-radius: 18px;
+  background: linear-gradient(180deg, rgba(18,20,30,0.92), rgba(10,12,18,0.95));
+  -webkit-backdrop-filter: blur(22px) saturate(150%);
+  backdrop-filter: blur(22px) saturate(150%);
+  border: 1px solid rgba(255,255,255,0.10);
+  box-shadow: 0 24px 60px -20px rgba(0,0,0,0.9), inset 0 1px 0 rgba(255,255,255,0.07);
+  transform-origin: bottom right;
+}
+body.dc-active .bento-toolbar.dc-fab-panel.open {
+  display: flex !important;           /* beats the <900px media-query kill */
+  animation: dcPanelPop .22s cubic-bezier(.22,1.2,.36,1);
+}
+@keyframes dcPanelPop {
+  from { opacity: 0; transform: translateY(10px) scale(0.94); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+.bento-toolbar.dc-fab-panel .bt-label { font-size: 9.5px; letter-spacing: 2.2px; opacity: .8; }
+.bento-toolbar.dc-fab-panel .bento-seg { width: 100%; }
+.bento-toolbar.dc-fab-panel .bento-seg button { flex: 1; padding: 7px 6px; }
+.bento-toolbar.dc-fab-panel .bento-edit-btn,
+.bento-toolbar.dc-fab-panel .bento-reset-btn { width: 100%; }
+
+@media (prefers-reduced-motion: reduce) {
+  #dc-layout-fab, #dc-layout-fab svg, .bento-toolbar.dc-fab-panel.open {
+    transition: none !important; animation: none !important;
+  }
+}
