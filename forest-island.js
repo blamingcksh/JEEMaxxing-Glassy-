@@ -521,6 +521,89 @@
 
   function startILoop() { if (iRaf == null) { iLast = 0; iRaf = requestAnimationFrame(iframe); } }
 
+/* ── full-screen Growth Forest Lab overlay ── */
+var labOverlay = null, labFrame = null;
+
+function ensureForestLabOverlay() {
+  if (labOverlay) return;
+
+  labOverlay = el('div', {
+    id: 'forest-lab-overlay',
+    class: 'forest-lab-overlay',
+    html:
+      '<div class="forest-lab-shell">' +
+        '<div class="forest-lab-loading">Loading Growth Forest…</div>' +
+        '<iframe id="forest-lab-frame" class="forest-lab-frame" title="Growth Forest Lab" allow="fullscreen"></iframe>' +
+        '<div class="forest-lab-actions">' +
+          '<button type="button" class="forest-lab-btn" id="forest-lab-newtab" title="Open in new tab">⧉</button>' +
+          '<button type="button" class="forest-lab-btn" id="forest-lab-close" title="Close">✕</button>' +
+        '</div>' +
+      '</div>'
+  });
+
+  document.body.appendChild(labOverlay);
+
+  labFrame = labOverlay.querySelector('#forest-lab-frame');
+
+  labFrame.addEventListener('load', function () {
+    if (labOverlay.classList.contains('open')) labOverlay.classList.add('loaded');
+  });
+
+  labOverlay.querySelector('#forest-lab-close').addEventListener('click', closeForestLab);
+
+  labOverlay.querySelector('#forest-lab-newtab').addEventListener('click', function () {
+    window.open('./forest-lab.html', '_blank', 'noopener');
+  });
+
+  labOverlay.addEventListener('click', function (e) {
+    if (e.target === labOverlay) closeForestLab();
+  });
+
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' && labOverlay && labOverlay.classList.contains('open')) {
+      closeForestLab();
+    }
+  });
+}
+
+function openForestLab() {
+  ensureForestLabOverlay();
+
+  labOverlay.classList.remove('loaded');
+  labOverlay.classList.add('open');
+  document.body.classList.add('forest-lab-open');
+
+  if (!labFrame.src || labFrame.src.indexOf('forest-lab.html') === -1) {
+    labFrame.src = './forest-lab.html';
+  }
+
+  // pause the little island while the big lab is open
+  if (iRaf != null) {
+    cancelAnimationFrame(iRaf);
+    iRaf = null;
+  }
+
+  var closeBtn = labOverlay.querySelector('#forest-lab-close');
+  if (closeBtn) closeBtn.focus();
+}
+
+function closeForestLab() {
+  if (!labOverlay || !labOverlay.classList.contains('open')) return;
+
+  labOverlay.classList.remove('open');
+  document.body.classList.remove('forest-lab-open');
+
+  setTimeout(function () {
+    if (labFrame) labFrame.src = 'about:blank';
+    if (labOverlay) labOverlay.classList.remove('loaded');
+  }, 320);
+
+  // resume the island if it should still be running
+  if (iBuilt && iVisible && iRaf == null) startILoop();
+
+  if (cvs) cvs.focus();
+}
+
   function restoreMomentum() { if (!card || !card.__fiOrig) return; card.classList.remove('island-active'); var nodes = card.querySelectorAll('.fi-orig'); for (var i=0;i<nodes.length;i++) nodes[i].classList.remove('fi-orig'); if (host && host.parentNode) host.parentNode.removeChild(host); card.__fiOrig = null; iBuilt = false; }
 
   function mount() {
@@ -533,7 +616,43 @@
     card.__fiOrig = true;
     host = el('div', { id:'forest-island-host', html:'<div id="forest-island-head"><div class="fi-titlewrap"><span class="fi-kicker">// TODAY\'S BIOME</span><span class="fi-title">Daily Grove</span></div><div class="fi-right"><div class="fi-count" id="fi-count">0</div><div class="fi-sub">resets at midnight</div></div></div><div style="position:relative;"><canvas id="forest-island-canvas"></canvas><div class="fi-empty" id="fi-empty">No trees yet — solve a question or tap + to plant one 🌱</div></div>' });
     card.appendChild(host); card.classList.add('island-active');
-    cvs = document.getElementById('forest-island-canvas'); countEl = document.getElementById('fi-count'); emptyEl = document.getElementById('fi-empty');
+    cvs = document.getElementById('forest-island-canvas');
+countEl = document.getElementById('fi-count');
+emptyEl = document.getElementById('fi-empty');
+
+try {
+  var headRight = host.querySelector('.fi-right');
+  if (headRight) {
+    var expandBtn = el('button', {
+      id: 'fi-expand',
+      class: 'fi-expand',
+      type: 'button',
+      title: 'Open full Growth Forest',
+      html: '⛶'
+    });
+    headRight.insertBefore(expandBtn, headRight.firstChild);
+    expandBtn.addEventListener('click', function (e) {
+      e.stopPropagation();
+      openForestLab();
+    });
+  }
+
+  if (cvs) {
+    cvs.title = 'Click to open full Growth Forest';
+    cvs.setAttribute('tabindex', '0');
+    cvs.setAttribute('role', 'button');
+    cvs.setAttribute('aria-label', 'Open full Growth Forest');
+
+    cvs.addEventListener('click', openForestLab);
+
+    cvs.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        openForestLab();
+      }
+    });
+  }
+} catch (e) {}
     try { new ResizeObserver(function () { sizeCanvas(); }).observe(cvs); } catch (e) {}
     try { new IntersectionObserver(function (es){ iVisible = es[0].isIntersecting && !!document.getElementById('view-dashboard').classList.contains('active'); if (iVisible && iBuilt) startILoop(); }).observe(cvs); } catch (e) {}
     document.addEventListener('visibilitychange', function () { if (!document.hidden && iVisible && iBuilt) startILoop(); });
