@@ -34,7 +34,9 @@
   function nightFactor(t) { var u = t/100; return Math.max(0, Math.min(1, Math.abs(u-0.5)*2)); }
   function normSub(s) { s = (s||'').toString().toLowerCase().trim(); return (s==='math'||s==='mathematics') ? 'maths' : (SUBJ.indexOf(s)>=0 ? s : 'physics'); }
   function qEloOf(q) { return (typeof q.qElo === 'number' && q.qElo > 0) ? q.qElo : 1200; }
-  function todayStr() { return new Date().toISOString().slice(0, 10); }
+  function todayStr() {
+    return new Date().toLocaleDateString('en-CA');
+  }
   function rc(id) { var e = document.getElementById(id); return e ? (parseInt(e.textContent, 10) || 0) : 0; }
 
   var LS_DAILY = 'jeemax_forest_daily_v1';
@@ -59,16 +61,27 @@
   }
 
   function liveCounts() {
-    return {
+    var live = {
       physics: rc('physics-count'),
       chemistry: rc('chemistry-count'),
       maths: rc('maths-count')
     };
+
+    try {
+      if (window.solved) {
+        live.physics = Math.max(live.physics, parseInt(window.solved.physics, 10) || 0);
+        live.chemistry = Math.max(live.chemistry, parseInt(window.solved.chemistry, 10) || 0);
+        live.maths = Math.max(live.maths, parseInt(window.solved.maths, 10) || 0);
+      }
+    } catch (e) {}
+
+    return live;
   }
 
   function visualTodayCounts() {
     var live = liveCounts();
     var saved = getSavedCounts(todayStr());
+
     return {
       physics: Math.max(live.physics, saved.physics),
       chemistry: Math.max(live.chemistry, saved.chemistry),
@@ -109,6 +122,14 @@
   /* the blend: all-time history + today's real solves + synthetic fillers for
      any manual "+" taps beyond the real solves (so the wallpaper always
      matches the dashboard counters the user is looking at). */
+  function dateKeyFromAny(s) {
+    var d = new Date(s);
+    if (isNaN(d.getTime())) return '';
+    var m = ('0' + (d.getMonth() + 1)).slice(-2);
+    var day = ('0' + d.getDate()).slice(-2);
+    return d.getFullYear() + '-' + m + '-' + day;
+  }
+
   function computeBgTrees() {
     var solved = solvedBank();
     var trees = [];
@@ -119,7 +140,10 @@
       var subj = normSub(q.subject);
       var elo = qEloOf(q);
 
-      var dstr = (q.lastReviewedAt || q.solvedAt || q.createdAt || q.date || q.ts || '').toString().slice(0, 10);
+      var dstr = dateKeyFromAny(
+        q.lastReviewedAt || q.solvedAt || q.createdAt || q.date || q.ts || ''
+      );
+
       if (dstr) {
         if (!solvedByDate[dstr]) solvedByDate[dstr] = { physics: 0, chemistry: 0, maths: 0 };
         solvedByDate[dstr][subj]++;
@@ -163,7 +187,11 @@
   function bgSig() {
     var storeSig = '';
     try { storeSig = localStorage.getItem(LS_DAILY) || ''; } catch (e) {}
-    return getBankSafe().length + '|' + solvedBank().length + '|' + liveTotal() + '|' + storeSig;
+
+    return (window.questionBank ? window.questionBank.length : 0) +
+      '|' + solvedBank().length +
+      '|' + liveTotal() +
+      '|' + storeSig;
   }
 
   var THREE = null, renderer, scene, camera, env = null, treeMat;

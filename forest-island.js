@@ -206,8 +206,26 @@
 
   /* ── read the LIVE daily counters (the single source of truth) ── */
   function readLiveCounts() {
-    function g(id) { var e = document.getElementById(id); return e ? (parseInt(e.textContent, 10) || 0) : 0; }
-    return { physics: g('physics-count'), chemistry: g('chemistry-count'), maths: g('maths-count') };
+    function g(id) {
+      var e = document.getElementById(id);
+      return e ? (parseInt(e.textContent, 10) || 0) : 0;
+    }
+
+    var live = {
+      physics: g('physics-count'),
+      chemistry: g('chemistry-count'),
+      maths: g('maths-count')
+    };
+
+    try {
+      if (window.solved) {
+        live.physics = Math.max(live.physics, parseInt(window.solved.physics, 10) || 0);
+        live.chemistry = Math.max(live.chemistry, parseInt(window.solved.chemistry, 10) || 0);
+        live.maths = Math.max(live.maths, parseInt(window.solved.maths, 10) || 0);
+      }
+    } catch (e) {}
+
+    return live;
   }
   /* ── daily persistence + shared visual counts ─────────────────────────── */
   var LS_DAILY = 'jeemax_forest_daily_v1';
