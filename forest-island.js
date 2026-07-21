@@ -102,7 +102,7 @@
     iRenderer = new THREE.WebGLRenderer({ canvas:cvs, antialias:true, alpha:true });
     iRenderer.setClearColor(0x000000, 0);
     iScene = new THREE.Scene();                                   // no fog → crisp zoom
-    iCam = new THREE.PerspectiveCamera(50, 1, 0.1, 400); iCam.position.set(0, 8, 12); iCam.lookAt(0, 1, 0);
+    iCam = new THREE.PerspectiveCamera(46, 1, 0.1, 400); iCam.position.set(0, 6.2, 9.4); iCam.lookAt(0, 1.25, 0);
     var skyMat = new THREE.ShaderMaterial({ side:THREE.BackSide, depthWrite:false, uniforms:{ top:{value:new THREE.Color()}, bottom:{value:new THREE.Color()}, off:{value:6}, exp:{value:0.62} }, vertexShader:'varying vec3 vW; void main(){ vec4 w=modelMatrix*vec4(position,1.); vW=w.xyz; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}', fragmentShader:'uniform vec3 top,bottom; uniform float off,exp; varying vec3 vW; void main(){ float h=normalize(vW+vec3(0.,off,0.)).y; float t=pow(max(h,0.),exp); gl_FragColor=vec4(mix(bottom,top,t),1.);}' });
     iEnv = { skyTop: skyMat.uniforms.top.value, skyBot: skyMat.uniforms.bottom.value };
     iScene.add(new THREE.Mesh(new THREE.SphereGeometry(180, 24, 12), skyMat));
@@ -137,7 +137,40 @@
     dummy = new THREE.Object3D();
     for (var k in geos) { var m = new THREE.InstancedMesh(geos[k], itreeMat, CAP); m.frustumCulled = false; m.count = 0; m.instanceMatrix.setUsage(THREE.DynamicDrawUsage); iScene.add(m); iMeshes[k] = m; }
     sizeCanvas(); iApplyTOD(realTOD());
-    syncToLive();                                                  // replay whatever the counters already show
+
+    window.__forestIslandAPI = {
+      version: 3,
+      THREE: THREE,
+      renderer: iRenderer,
+      scene: iScene,
+      camera: iCam,
+      env: iEnv,
+      meshes: iMeshes,
+      trees: iState,
+      drySpots: iEnv.drySpots,
+      heightAt: iHeight,
+      coastR: coastR,
+      motionOK: motionOK,
+      readLiveCounts: readLiveCounts,
+      total: iTotal,
+      initialSync: true,
+      SUBJECTS: {
+        physics: { color: new THREE.Color(0x4cc9ff) },
+        chemistry: { color: new THREE.Color(0x39d98a) },
+        maths: { color: new THREE.Color(0xffb224) },
+        oak: { color: new THREE.Color(0xd9a066) }
+      },
+      onFrame: [],
+      onPlanted: [],
+      topY: function (t) {
+        var sc = (t.baseScale || 1) * (t.sy || 1);
+        return (t.y || 0) + 2.1 * Math.max(0.2, sc);
+      }
+    };
+
+    window.__forestIslandAPI.initialSync = true;
+    syncToLive();
+    window.__forestIslandAPI.initialSync = false;
   }
   function ensureIslandBuilt() { if (iBuilt || iBuilding) return; iBuilding = true; loadThree().then(function (m){ THREE = m; try { buildIsland(); iBuilt = true; if (iVisible) startILoop(); } catch (e) { toast('Daily island failed: ' + (e && e.message || e)); restoreMomentum(); } iBuilding = false; }).catch(function (e){ toast('Could not load 3D for the daily island; momentum graph restored.'); restoreMomentum(); iBuilding = false; }); }
 
@@ -147,8 +180,33 @@
     var oak = (q.qElo || 1200) >= 2300, k = oak ? 'oak' : q.subject;
     var sp = allocSpot();
     var base = (0.95 + Math.min(1, Math.max(0, ((q.qElo||1200)-800)/2200)) * 0.95) * (oak ? 1.0 : 1.0);
-    var s = { x:sp.x, y:sp.y, z:sp.z, spotIdx:sp.idx, baseScale:base, sy:0.9+hash(iTotal(),11)*0.4, sxz:0.95+hash(iTotal(),13)*0.3, leanX:(hash(iTotal(),17)-0.5)*0.08, leanZ:(hash(iTotal(),19)-0.5)*0.08, rot:hash(iTotal(),3)*6.283, cur:instant?1:0, animT0:performance.now(), iid:iState[k].length };
+    var s = {
+      x: sp.x,
+      y: sp.y,
+      z: sp.z,
+      spotIdx: sp.idx,
+      subject: k,
+      qElo: q.qElo || 1200,
+      oak: oak,
+      plantedAt: Date.now(),
+      baseScale: base,
+      sy: 0.9 + hash(iTotal(), 11) * 0.4,
+      sxz: 0.95 + hash(iTotal(), 13) * 0.3,
+      leanX: (hash(iTotal(), 17) - 0.5) * 0.08,
+      leanZ: (hash(iTotal(), 19) - 0.5) * 0.08,
+      rot: hash(iTotal(), 3) * 6.283,
+      cur: instant ? 1 : 0,
+      animT0: performance.now(),
+      iid: iState[k].length
+    };
     iState[k].push(s); writeIsland(k, s, s.cur); iMeshes[k].count = iState[k].length; iMeshes[k].instanceMatrix.needsUpdate = true;
+
+    if (window.__forestIslandAPI) {
+      var interactive = !instant && !window.__forestIslandAPI.initialSync;
+      for (var h = 0; h < window.__forestIslandAPI.onPlanted.length; h++) {
+        try { window.__forestIslandAPI.onPlanted[h](s, interactive); } catch (e) {}
+      }
+    }
   }
   function iTotal() { return plantedBySubj.physics + plantedBySubj.chemistry + plantedBySubj.maths; }
   function setCount(n) { if (countEl) countEl.textContent = n; if (emptyEl) emptyEl.style.display = n > 0 ? 'none' : 'flex'; }
@@ -178,12 +236,18 @@
     iRaf = requestAnimationFrame(iframe);
     if (t - iLast < IFRAME) return; var dt = Math.min(0.05, (t - iLastT)/1000 || 0); iLastT = t; iLast = t; iEl += dt;
     if (motionOK()) iOrbit += dt * 0.12;
-    iCam.position.set(Math.sin(iOrbit)*12, 8, Math.cos(iOrbit)*12); iCam.lookAt(0, 1, 0);
+    iCam.position.set(Math.sin(iOrbit)*9.4, 6.2, Math.cos(iOrbit)*9.4); iCam.lookAt(0, 1.25, 0);
     if (t - iLastTOD > 30000) { iLastTOD = t; iApplyTOD(realTOD()); }
     if (iEnv.water) iEnv.water.position.y = -0.2 + Math.sin(iEl*0.8)*0.02;
     if (itreeMat.userData.shader) itreeMat.userData.shader.uniforms.uTime.value = iEl;
     var now = performance.now();
     for (var k in iState) { var arr = iState[k], dirty = false; for (var i=0;i<arr.length;i++){ var s = arr[i]; if (s.cur < 1) { var p = (now - s.animT0)/600, g; if (p <= 0) g = 0; else if (p >= 1) { g = 1; s.cur = 1; } else { g = easeOutBack(p); s.cur = g; } writeIsland(k, s, g); dirty = true; } } if (dirty) iMeshes[k].instanceMatrix.needsUpdate = true; }
+
+    if (window.__forestIslandAPI) {
+      for (var h = 0; h < window.__forestIslandAPI.onFrame.length; h++) {
+        try { window.__forestIslandAPI.onFrame[h](iEl, dt); } catch (e) {}
+      }
+    }
     iRenderer.render(iScene, iCam);
   }
   function startILoop() { if (iRaf == null) { iLast = 0; iRaf = requestAnimationFrame(iframe); } }
