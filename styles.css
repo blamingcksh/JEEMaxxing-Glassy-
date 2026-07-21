@@ -4508,3 +4508,173 @@ body.bento-dragging #view-dashboard .dash-card.dash-card-tracker {
   #sidebar .user-profile { padding: 3px !important; }
 }
 
+
+/* ════════════════════════════════════════════════════════════════════════
+   THEME ENGINE — global re-skin via [data-theme] on <html>.
+   Append-only. Reversible: delete this block + theme.js + its script tag.
+   Status colors (green/red/yellow) stay semantic across all themes.
+   ════════════════════════════════════════════════════════════════════════ */
+
+/* ── Palettes ──────────────────────────────────────────────────────────── */
+:root, html[data-theme="furnace"] {
+  --furnace: #ffb224;  --furnace-hot: #ff7a1a;  --telemetry: #3ddcff;  --vault: #a78bfa;
+  --grad-furnace: linear-gradient(100deg, #ffb224, #ff7a1a);
+  --grad-flow: linear-gradient(90deg, #ffb224, #ff7a1a, #3ddcff, #ffb224);
+  --aes-amber: #ffb224; --aes-amber2: #ff7a1a; --aes-cyan: #3ddcff; --aes-violet: #a78bfa;
+  --aur-1: rgba(255,178,36,0.10); --aur-2: rgba(61,220,255,0.08); --aur-3: rgba(167,139,250,0.07);
+  --accent-soft: rgba(255,178,36,0.35);
+  --accent-ink: #1a1206;
+}
+html[data-theme="synthwave"] {
+  --furnace: #c084fc;  --furnace-hot: #e879f9;  --telemetry: #818cf8;  --vault: #f472b6;
+  --grad-furnace: linear-gradient(100deg, #c084fc, #e879f9);
+  --grad-flow: linear-gradient(90deg, #c084fc, #e879f9, #818cf8, #c084fc);
+  --aes-amber: #c084fc; --aes-amber2: #e879f9; --aes-cyan: #818cf8; --aes-violet: #f472b6;
+  --aur-1: rgba(192,132,252,0.11); --aur-2: rgba(129,140,248,0.09); --aur-3: rgba(244,114,182,0.08);
+  --accent-soft: rgba(192,132,252,0.38);
+  --accent-ink: #170a26;
+}
+html[data-theme="glacier"] {
+  --furnace: #38bdf8;  --furnace-hot: #0ea5e9;  --telemetry: #22d3ee;  --vault: #818cf8;
+  --grad-furnace: linear-gradient(100deg, #38bdf8, #0ea5e9);
+  --grad-flow: linear-gradient(90deg, #38bdf8, #0ea5e9, #22d3ee, #38bdf8);
+  --aes-amber: #38bdf8; --aes-amber2: #0ea5e9; --aes-cyan: #22d3ee; --aes-violet: #818cf8;
+  --aur-1: rgba(56,189,248,0.10); --aur-2: rgba(34,211,238,0.08); --aur-3: rgba(129,140,248,0.08);
+  --accent-soft: rgba(56,189,248,0.38);
+  --accent-ink: #04131d;
+}
+html[data-theme="overgrowth"] {
+  --furnace: #34d399;  --furnace-hot: #10b981;  --telemetry: #a3e635;  --vault: #2dd4bf;
+  --grad-furnace: linear-gradient(100deg, #34d399, #10b981);
+  --grad-flow: linear-gradient(90deg, #34d399, #10b981, #a3e635, #34d399);
+  --aes-amber: #34d399; --aes-amber2: #10b981; --aes-cyan: #a3e635; --aes-violet: #2dd4bf;
+  --aur-1: rgba(52,211,153,0.10); --aur-2: rgba(163,230,53,0.07); --aur-3: rgba(45,212,191,0.07);
+  --accent-soft: rgba(52,211,153,0.38);
+  --accent-ink: #03150d;
+}
+html[data-theme="bloodmoon"] {
+  --furnace: #ef4444;  --furnace-hot: #f97316;  --telemetry: #fbbf24;  --vault: #fb7185;
+  --grad-furnace: linear-gradient(100deg, #ef4444, #f97316);
+  --grad-flow: linear-gradient(90deg, #ef4444, #f97316, #fbbf24, #ef4444);
+  --aes-amber: #ef4444; --aes-amber2: #f97316; --aes-cyan: #fbbf24; --aes-violet: #fb7185;
+  --aur-1: rgba(239,68,68,0.10); --aur-2: rgba(251,191,36,0.07); --aur-3: rgba(251,113,133,0.07);
+  --accent-soft: rgba(239,68,68,0.38);
+  --accent-ink: #1c0505;
+}
+html[data-theme="sakura"] {
+  --furnace: #f472b6;  --furnace-hot: #fb7185;  --telemetry: #c4b5fd;  --vault: #fda4af;
+  --grad-furnace: linear-gradient(100deg, #f472b6, #fb7185);
+  --grad-flow: linear-gradient(90deg, #f472b6, #fb7185, #c4b5fd, #f472b6);
+  --aes-amber: #f472b6; --aes-amber2: #fb7185; --aes-cyan: #c4b5fd; --aes-violet: #fda4af;
+  --aur-1: rgba(244,114,182,0.10); --aur-2: rgba(196,181,253,0.08); --aur-3: rgba(253,164,175,0.07);
+  --accent-soft: rgba(244,114,182,0.38);
+  --accent-ink: #200812;
+}
+html[data-theme="stealth"] {
+  --furnace: #e5e7eb;  --furnace-hot: #9ca3af;  --telemetry: #cbd5e1;  --vault: #94a3b8;
+  --grad-furnace: linear-gradient(100deg, #e5e7eb, #9ca3af);
+  --grad-flow: linear-gradient(90deg, #e5e7eb, #9ca3af, #cbd5e1, #e5e7eb);
+  --aes-amber: #e5e7eb; --aes-amber2: #9ca3af; --aes-cyan: #cbd5e1; --aes-violet: #94a3b8;
+  --aur-1: rgba(229,231,235,0.06); --aur-2: rgba(203,213,225,0.05); --aur-3: rgba(148,163,184,0.05);
+  --accent-soft: rgba(229,231,235,0.30);
+  --accent-ink: #0b0d12;
+}
+
+/* ── Aurora backdrop + ambient orbs follow the active palette ──────────── */
+body::before {
+  background:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.035'/%3E%3C/svg%3E"),
+    radial-gradient(46rem 36rem at 12% -8%,  var(--aur-1), transparent 60%),
+    radial-gradient(40rem 34rem at 102% 6%,  var(--aur-2), transparent 60%),
+    radial-gradient(48rem 40rem at 50% 116%, var(--aur-3), transparent 62%),
+    radial-gradient(120% 120% at 50% 0%, #0b0d14 0%, #070809 60%, #050507 100%);
+}
+.ambient-glow                { background: radial-gradient(circle, var(--aur-1), transparent 68%) !important; }
+.ambient-glow.glow-secondary { background: radial-gradient(circle, var(--aur-2), transparent 68%) !important; }
+
+/* ── Ink-on-accent + soft glow spots the premium pass hardcoded ────────── */
+.btn-primary, .btn-save-glow, .ingestion-toggle-btn.active,
+.sr-submit-btn, .sr-confirm-btn, .cpcc-save-btn { color: var(--accent-ink) !important; }
+::selection { background: var(--furnace); color: var(--accent-ink); }
+.pfp-img { box-shadow: 0 0 0 2px var(--accent-soft), 0 0 16px var(--accent-soft); }
+.logo-text { text-shadow: 0 0 26px var(--accent-soft); }
+.global-mmr-row { box-shadow: 0 0 18px var(--accent-soft), inset 0 1px 0 rgba(255,255,255,0.08) !important; }
+
+/* ── Bento editor chrome follows the accent too ────────────────────────── */
+.bento-seg button.active { background: var(--grad-furnace) !important; color: var(--accent-ink) !important; box-shadow: 0 2px 10px var(--accent-soft) !important; }
+.bento-handle:hover::before, .bento-handle:focus-visible::before,
+.bento-handle-v:hover::before, .bento-handle-v:focus-visible::before { background: var(--furnace); box-shadow: 0 0 16px var(--accent-soft); }
+.bento-ctrl-btn:hover { border-color: var(--furnace); box-shadow: 0 0 12px var(--accent-soft); }
+.bento-edit-btn.active { background: var(--accent-soft); border-color: var(--furnace); color: #fff; }
+#view-dashboard .dash-card.bento-drag-target { box-shadow: 0 26px 60px -22px rgba(0,0,0,0.9), 0 0 0 1px var(--accent-soft) !important; }
+
+/* ── The theme pill button ─────────────────────────────────────────────── */
+.theme-btn {
+  display: inline-flex; align-items: center; gap: 8px;
+  flex: 0 0 auto; margin: 0 4px; padding: 8px 12px;
+  background: var(--aes-glass, rgba(255,255,255,0.05));
+  border: 1px solid var(--aes-line, rgba(255,255,255,0.08));
+  border-radius: 12px;
+  color: var(--text-primary);
+  font-family: var(--aes-display, 'Chakra Petch', sans-serif);
+  font-size: 12px; font-weight: 700; letter-spacing: 0.4px;
+  cursor: pointer; white-space: nowrap;
+  -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
+  transition: border-color 0.18s ease, box-shadow 0.18s ease, transform 0.18s ease;
+}
+.theme-btn:hover { border-color: var(--accent-soft); box-shadow: 0 0 16px var(--accent-soft); transform: translateY(-1px); }
+.theme-btn[aria-expanded="true"] { border-color: var(--furnace); box-shadow: 0 0 18px var(--accent-soft); }
+.theme-btn-dot {
+  width: 14px; height: 14px; border-radius: 50%; flex: 0 0 auto;
+  box-shadow: 0 0 10px var(--accent-soft), inset 0 0 0 1px rgba(255,255,255,0.25);
+}
+.theme-btn-chev { font-size: 9px; opacity: 0.6; transition: transform 0.2s ease; }
+.theme-btn[aria-expanded="true"] .theme-btn-chev { transform: rotate(180deg); }
+.sidebar.collapsed .theme-btn-label, .sidebar.collapsed .theme-btn-chev { display: none; }
+.sidebar.collapsed .theme-btn { padding: 8px; }
+
+/* ── The dropdown panel ────────────────────────────────────────────────── */
+.theme-panel {
+  position: fixed; z-index: 100000; width: 264px; padding: 10px;
+  border-radius: 18px;
+  background: linear-gradient(180deg, rgba(18,20,30,0.92), rgba(10,12,18,0.94));
+  -webkit-backdrop-filter: blur(22px) saturate(150%); backdrop-filter: blur(22px) saturate(150%);
+  border: 1px solid rgba(255,255,255,0.10);
+  box-shadow: 0 24px 60px -20px rgba(0,0,0,0.9), inset 0 1px 0 rgba(255,255,255,0.07), 0 0 0 1px rgba(0,0,0,0.3);
+  opacity: 0; transform: translateY(-8px) scale(0.96); transform-origin: top left;
+  pointer-events: none;
+  transition: opacity 0.18s ease, transform 0.22s cubic-bezier(0.22,1.2,0.36,1);
+}
+.theme-panel.open { opacity: 1; transform: none; pointer-events: auto; }
+.theme-panel-head {
+  font-family: var(--aes-display, sans-serif);
+  font-size: 9.5px; font-weight: 700; letter-spacing: 2.2px;
+  color: var(--text-secondary); padding: 6px 8px 10px;
+}
+.theme-opt {
+  display: flex; align-items: center; gap: 11px; width: 100%;
+  padding: 9px 10px; border-radius: 12px; text-align: left;
+  background: transparent; border: 1px solid transparent;
+  color: var(--text-primary); cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease, transform 0.15s ease;
+}
+.theme-opt:hover { background: rgba(255,255,255,0.05); border-color: rgba(255,255,255,0.09); transform: translateX(2px); }
+.theme-opt.active { background: linear-gradient(90deg, var(--accent-soft), transparent 75%); border-color: var(--accent-soft); }
+.theme-opt-dot {
+  width: 22px; height: 22px; border-radius: 50%; flex: 0 0 auto;
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,0.28), 0 0 12px rgba(0,0,0,0.4);
+}
+.theme-opt-txt { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.theme-opt-name { font-family: var(--aes-display, sans-serif); font-size: 12.5px; font-weight: 700; }
+.theme-opt-desc { font-size: 10px; color: var(--text-secondary); }
+.theme-opt-check {
+  margin-left: auto; opacity: 0; font-weight: 800;
+  color: var(--furnace); text-shadow: 0 0 10px var(--accent-soft);
+  transition: opacity 0.15s ease;
+}
+.theme-opt.active .theme-opt-check { opacity: 1; }
+
+@media (max-width: 560px) {
+  .theme-btn-label { display: none; }
+  .theme-btn { padding: 8px 9px; }
+}
