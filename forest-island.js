@@ -1,4 +1,18 @@
 /* ============================================================================
+   forest-island.js  ·  "Daily Grove" island  (APP file)
+   ----------------------------------------------------------------------------
+   DEPENDENCY MAP — two worlds, never cross the streams:
+     MAIN APP (index.html):  forest-bg.js · forest-island.js · styles.css
+     LAB  (forest-lab.html): forest-lab.html · forest-juice.js  (LAB-ONLY!)
+   • forest-juice.js is LAB-ONLY — never add it to index.html.
+   • ISOLATED: only HIDES the old momentum nodes via a class (never deletes
+     them) → if the 3D build fails, the candlestick graph comes back and a
+     toast explains. The app can never be blanked by this file.
+   • Tree source = TODAY's live counters (physics/chemistry/maths-count),
+     watched by a MutationObserver → grows the instant a + tap or a real
+     solve moves a counter; resets at midnight.
+   ============================================================================ */
+/* ============================================================================
    forest-island.js v2 — daily-reset 3D island that REPLACES the Momentum card.
    ISOLATED + SAFE: only ever HIDES the original momentum nodes via a class
    (never deletes them); if the 3D build fails the candlestick graph is
