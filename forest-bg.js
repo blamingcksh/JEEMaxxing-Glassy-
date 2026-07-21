@@ -69,7 +69,34 @@ function buildScene(){
 }
 function placeTrees(data){if(!env||!env.geos)return;(env.treeMeshes||[]).forEach(function(m){scene.remove(m);if(m.geometry)m.geometry.dispose();});env.treeMeshes=[];var spots=env.spots;if(!spots||!spots.length)return;var groups={physics:[],chemistry:[],maths:[],oak:[]};data.forEach(function(d,i){var oak=(d.qElo||1200)>=2300;(groups[oak?'oak':(d.subject||'physics')]).push({i:i,base:(0.55+Math.min(1,Math.max(0,((d.qElo||1200)-800)/2200))*1.1+(hash(i,7)-0.5)*0.16)*(oak?0.85:1),sy:(0.82+hash(i,11)*0.5)*(oak?0.95:1),sxz:0.85+hash(i,13)*0.32,lx:(hash(i,17)-0.5)*0.1*(oak?0.4:1),lz:(hash(i,19)-0.5)*0.1*(oak?0.4:1),rot:hash(i,3)*6.283});});var dummy=new THREE.Object3D();Object.keys(groups).forEach(function(k){var list=groups[k];if(!list.length)return;var m=new THREE.InstancedMesh(env.geos[k],treeMat,list.length);m.frustumCulled=false;list.forEach(function(t,j){var s=spots[t.i%spots.length];var sc=t.base;dummy.position.set(s.x+(hash(t.i,5)-0.5)*0.6,s.y-0.06,s.z+(hash(t.i,6)-0.5)*0.6);dummy.rotation.set(t.lx,t.rot,t.lz);dummy.scale.set(t.sxz*sc,t.sy*sc,t.sxz*sc);dummy.updateMatrix();m.setMatrixAt(j,dummy.matrix);});m.instanceMatrix.needsUpdate=true;scene.add(m);env.treeMeshes.push(m);});}
 function rebuildIfNeeded(force){var sig=bgSig();if(force||sig!==lastSig){lastSig=sig;if(built)placeTrees(computeBgTrees());}}
-function ensureBuilt(){if(built||building)return;building=true;loadThree().then(function(m){THREE=m;try { buildScene(); built = true; applyTOD(realTOD()); rebuildIfNeeded(true); startLoop(); };applyTOD(realTOD());rebuildIfNeeded(true);}catch(e){toast('Living world build failed: '+(e&&e.message||e));enabled=false;document.body.classList.remove('forest-bg-on');if(btn)btn.classList.remove('active');if(canvas)canvas.style.opacity='0';}building=false;}).catch(function(){toast('Could not load the 3D engine. Grid background kept.');enabled=false;document.body.classList.remove('forest-bg-on');if(btn)btn.classList.remove('active');if(canvas)canvas.style.opacity='0';building=false;});}
+function ensureBuilt(){
+  if(built||building)return;
+  building=true;
+  loadThree().then(function(m){
+    THREE=m;
+    try {
+      buildScene();
+      built = true;
+      applyTOD(realTOD());
+      rebuildIfNeeded(true);
+      startLoop();
+    } catch(e) {
+      toast('Living world build failed: '+(e&&e.message||e));
+      enabled=false;
+      document.body.classList.remove('forest-bg-on');
+      if(btn)btn.classList.remove('active');
+      if(canvas)canvas.style.opacity='0';
+    }
+    building=false;
+  }).catch(function(){
+    toast('Could not load the 3D engine. Grid background kept.');
+    enabled=false;
+    document.body.classList.remove('forest-bg-on');
+    if(btn)btn.classList.remove('active');
+    if(canvas)canvas.style.opacity='0';
+    building=false;
+  });
+}
 function frame(t){if (!enabled || document.hidden || !built || !renderer || !scene || !camera || !env) { raf = null; return; }raf=requestAnimationFrame(frame);if(t-last<FRAME)return;var dt=Math.min(0.05,(t-last)/1000||0);last=t;elT+=dt;orbit+=dt*0.06;var R=140,H=95;camera.position.set(Math.sin(orbit)*R,H,Math.cos(orbit)*R);camera.lookAt(0,4,0);if(t-lastTOD>30000){lastTOD=t;applyTOD(realTOD());}if(env.water)env.water.position.y=WL+Math.sin(elT*0.6)*0.04;if(treeMat&&treeMat.userData.shader)treeMat.userData.shader.uniforms.uTime.value=elT;if(env&&env.ffMat){var nf=nightFactor(curTOD);env.ffMat.opacity=nf*0.9;if(env.ffGeo&&nf>0.02){var arr=env.ffGeo.attributes.position.array,ca=env.ffGeo.attributes.color.array;for(var i=0;i<env.ffBase.length;i++){var b=env.ffBase[i],tw=0.5+0.5*Math.sin(elT*b.sp*3+b.ph),f=nf*tw;arr[i*3]=b.x+Math.sin(elT*b.sp+b.ph)*0.8;arr[i*3+1]=b.y+Math.sin(elT*b.sp*1.3+b.ph)*0.5;arr[i*3+2]=b.z+Math.cos(elT*b.sp*0.8+b.ph)*0.8;ca[i*3]=1.0*f;ca[i*3+1]=0.85*f;ca[i*3+2]=0.4*f;}env.ffGeo.attributes.position.needsUpdate=true;env.ffGeo.attributes.color.needsUpdate=true;}}renderer.render(scene,camera);}
 function startLoop(){if(raf==null){last=0;raf=requestAnimationFrame(frame);}}
 function stopLoop(){if(raf!=null){cancelAnimationFrame(raf);raf=null;}}
