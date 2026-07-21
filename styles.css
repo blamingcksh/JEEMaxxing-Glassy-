@@ -5452,3 +5452,52 @@ body.forest-bg-on #view-dashboard .distribution-pill {
   position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
   color: var(--text-muted,#5b6478); font-size: 12px; pointer-events: none; text-align: center; padding: 0 16px;
 }
+
+/* ════════════════════════════════════════════════════════════════════════
+   LIVING WORLD → UNIFORM GLASS (fix pass). Append-only + reversible.
+   When the 🌲 World wallpaper is ON, the hero Tracker card's animated
+   rainbow edge and the Momentum card's cyan→violet frame used to outrank
+   the glass rule (they carry !important at a higher specificity), so
+   those two kept "glowing with their own colours". This block re-asserts
+   ONE identical frosted-glass look on EVERY card by adding #view-dashboard
+   to the selector (one extra id = it wins) + !important, and strips the
+   conic edge, the gradient frame, the corner ticks, the chart's cyan glow
+   and the spin animation. Gated on body.forest-bg-on → the default (grid)
+   premium look is 100% untouched when the wallpaper is OFF.
+   ════════════════════════════════════════════════════════════════════════ */
+body.forest-bg-on #view-dashboard .dash-card,
+body.forest-bg-on #view-dashboard .dash-card-tracker,
+body.forest-bg-on #view-dashboard .dash-card-momentum,
+body.forest-bg-on #view-dashboard .dash-card-bounty,
+body.forest-bg-on #view-dashboard .dash-card-decay {
+  background: var(--aes-glass, linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.022))) !important;
+  border: 1px solid rgba(255,255,255,.12) !important;
+  animation: none !important;
+  -webkit-backdrop-filter: blur(16px) saturate(135%);
+  backdrop-filter: blur(16px) saturate(135%);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.10), 0 20px 46px -26px rgba(0,0,0,.75) !important;
+}
+/* kill the rainbow edge + cyan/violet gradient frames + the corner ticks */
+body.forest-bg-on #view-dashboard .dash-card::before,
+body.forest-bg-on #view-dashboard .dash-card::after {
+  background: rgba(255,255,255,.10) !important;
+  box-shadow: none !important;
+  animation: none !important;
+  opacity: .5 !important;
+}
+body.forest-bg-on #view-dashboard .dash-card-tracker::after { display: none !important; }
+/* the momentum chart well → clear glass, no cyan inset glow / HUD brackets */
+body.forest-bg-on #view-dashboard .graph-display {
+  background: rgba(8,10,16,.28) !important;
+  border: 1px solid rgba(255,255,255,.10) !important;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.06) !important;
+}
+body.forest-bg-on #view-dashboard .graph-display::before,
+body.forest-bg-on #view-dashboard .graph-display::after { display: none !important; }
+body.forest-bg-on #view-dashboard .dash-card-momentum .kicker { color: var(--text-secondary, #9aa3b5) !important; }
+/* subject tiles inside the tracker → uniform glass, no coloured frame */
+body.forest-bg-on #view-dashboard .compact-subject-card {
+  background: rgba(255,255,255,.04) !important;
+  border: 1px solid rgba(255,255,255,.10) !important;
+  box-shadow: none !important;
+}
