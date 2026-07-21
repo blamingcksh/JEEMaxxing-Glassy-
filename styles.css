@@ -5500,6 +5500,180 @@ body.forest-bg-on #view-dashboard .compact-subject-card {
    #forest-island-canvas {
   filter: saturate(1.35) contrast(1.06) brightness(1.02);
 }
+   /* ════════════════════════════════════════════════════════════════════════
+DAILY ISLAND → FULL-SCREEN GROWTH FOREST LAB OVERLAY
+════════════════════════════════════════════════════════════════════════ */
+
+/* make the island feel clickable */
+#forest-island-canvas {
+  cursor: pointer;
+  transition: filter .18s ease, transform .18s ease;
+}
+
+#forest-island-canvas:hover {
+  filter: saturate(1.12) brightness(1.03);
+}
+
+#forest-island-canvas:active {
+  transform: scale(.995);
+}
+
+#forest-island-canvas:focus-visible {
+  outline: 2px solid var(--telemetry, #3ddcff);
+  outline-offset: 3px;
+}
+
+/* small expand button in the island header */
+.fi-expand {
+  appearance: none;
+  border: 1px solid rgba(255,255,255,.14);
+  background: rgba(255,255,255,.05);
+  color: #dbe4ff;
+  width: 28px;
+  height: 28px;
+  border-radius: 9px;
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  display: grid;
+  place-items: center;
+  margin-bottom: 4px;
+  transition: all .16s ease;
+}
+
+.fi-expand:hover {
+  border-color: var(--telemetry, #3ddcff);
+  color: #fff;
+  box-shadow: 0 0 14px rgba(61,220,255,.35);
+  transform: translateY(-1px);
+}
+
+/* lock body scroll while lab is open */
+body.forest-lab-open {
+  overflow: hidden;
+}
+
+/* full-screen overlay */
+.forest-lab-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  display: flex;
+  padding: clamp(10px, 3vw, 34px);
+  background: rgba(5, 6, 10, .82);
+  -webkit-backdrop-filter: blur(20px) saturate(140%);
+  backdrop-filter: blur(20px) saturate(140%);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .28s ease;
+}
+
+.forest-lab-overlay.open {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* the lab window */
+.forest-lab-shell {
+  position: relative;
+  width: min(1320px, 100%);
+  height: min(900px, 100%);
+  margin: auto;
+  border-radius: 24px;
+  overflow: hidden;
+  border: 1px solid rgba(255,255,255,.14);
+  background: #070910;
+  box-shadow:
+    0 50px 120px -40px rgba(0,0,0,.9),
+    0 0 60px -30px rgba(61,220,255,.35),
+    inset 0 1px 0 rgba(255,255,255,.08);
+  transform: scale(.96) translateY(16px);
+  transition: transform .32s cubic-bezier(.22,1,.36,1);
+}
+
+.forest-lab-overlay.open .forest-lab-shell {
+  transform: none;
+}
+
+/* iframe */
+.forest-lab-frame {
+  width: 100%;
+  height: 100%;
+  border: 0;
+  display: block;
+  opacity: 0;
+  transition: opacity .35s ease;
+  background: #070910;
+}
+
+.forest-lab-overlay.loaded .forest-lab-frame {
+  opacity: 1;
+}
+
+/* loading state */
+.forest-lab-loading {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: #9fb3d9;
+  font-family: var(--font-display, 'Chakra Petch', sans-serif);
+  letter-spacing: 2px;
+  font-size: 12px;
+  text-transform: uppercase;
+  background: #070910;
+  transition: opacity .3s ease;
+}
+
+.forest-lab-overlay.loaded .forest-lab-loading {
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* overlay controls */
+.forest-lab-actions {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  z-index: 5;
+  display: flex;
+  gap: 8px;
+}
+
+.forest-lab-btn {
+  width: 38px;
+  height: 38px;
+  border-radius: 12px;
+  border: 1px solid rgba(255,255,255,.16);
+  background: rgba(8,10,16,.72);
+  color: #e8eefc;
+  font-size: 16px;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+  transition: all .16s ease;
+}
+
+.forest-lab-btn:hover {
+  border-color: rgba(61,220,255,.55);
+  color: #fff;
+  box-shadow: 0 0 18px rgba(61,220,255,.35);
+  transform: translateY(-1px);
+}
+
+/* mobile: make it full-bleed */
+@media (max-width: 640px) {
+  .forest-lab-overlay {
+    padding: 0;
+  }
+
+  .forest-lab-shell {
+    border-radius: 0;
+    height: 100%;
+  }
+}
   background: rgba(255,255,255,.04) !important;
   border: 1px solid rgba(255,255,255,.10) !important;
   box-shadow: none !important;
