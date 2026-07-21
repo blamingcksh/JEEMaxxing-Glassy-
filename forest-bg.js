@@ -36,21 +36,135 @@
   function qEloOf(q) { return (typeof q.qElo === 'number' && q.qElo > 0) ? q.qElo : 1200; }
   function todayStr() { return new Date().toISOString().slice(0, 10); }
   function rc(id) { var e = document.getElementById(id); return e ? (parseInt(e.textContent, 10) || 0) : 0; }
-  function liveTotal() { return rc('physics-count') + rc('chemistry-count') + rc('maths-count'); }
-  function solvedBank() { var qb = window.questionBank || [], o = []; for (var i = 0; i < qb.length; i++) { var q = qb[i]; if (q && q.status === 'solved') o.push(q); } return o; }
+
+  var LS_DAILY = 'jeemax_forest_daily_v1';
+
+  function loadDailyStore() {
+    try {
+      var o = JSON.parse(localStorage.getItem(LS_DAILY) || '{}');
+      return (o && typeof o === 'object') ? o : {};
+    } catch (e) {
+      return {};
+    }
+  }
+
+  function getSavedCounts(date) {
+    var st = loadDailyStore();
+    var c = st[date] || {};
+    return {
+      physics: parseInt(c.physics, 10) || 0,
+      chemistry: parseInt(c.chemistry, 10) || 0,
+      maths: parseInt(c.maths, 10) || 0
+    };
+  }
+
+  function liveCounts() {
+    return {
+      physics: rc('physics-count'),
+      chemistry: rc('chemistry-count'),
+      maths: rc('maths-count')
+    };
+  }
+
+  function visualTodayCounts() {
+    var live = liveCounts();
+    var saved = getSavedCounts(todayStr());
+    return {
+      physics: Math.max(live.physics, saved.physics),
+      chemistry: Math.max(live.chemistry, saved.chemistry),
+      maths: Math.max(live.maths, saved.maths)
+    };
+  }
+
+  function liveTotal() {
+    var c = visualTodayCounts();
+    return c.physics + c.chemistry + c.maths;
+  }
+
+  function syntheticElo(dateStr, subj, i) {
+    var h = hash(dateStr.length + i * 7 + 3, subj.length * 3 + i * 11 + 1);
+    return 1000 + Math.floor(h * 800);
+  }
+
+  function getBankSafe() {
+    try {
+      if (Array.isArray(window.questionBank) && window.questionBank.length) return window.questionBank;
+      if (window.AppState && Array.isArray(window.AppState.questionBank) && window.AppState.questionBank.length) {
+        return window.AppState.questionBank;
+      }
+    } catch (e) {}
+    return [];
+  }
+
+  function solvedBank() {
+    var qb = getBankSafe(), o = [];
+    for (var i = 0; i < qb.length; i++) {
+      var q = qb[i];
+      if (q && q.status === 'solved') o.push(q);
+    }
+    return o;
+  }
   function historical() { var tk = todayStr(), qb = solvedBank(), o = []; for (var i = 0; i < qb.length; i++) { var q = qb[i]; if ((q.lastReviewedAt || '').slice(0,10) !== tk) o.push({ subject: normSub(q.subject), qElo: qEloOf(q) }); } return o; }
   function todayReal() { var tk = todayStr(), qb = solvedBank(), o = []; for (var i = 0; i < qb.length; i++) { var q = qb[i]; if ((q.lastReviewedAt || '').slice(0,10) === tk) o.push({ subject: normSub(q.subject), qElo: qEloOf(q) }); } return o; }
   /* the blend: all-time history + today's real solves + synthetic fillers for
      any manual "+" taps beyond the real solves (so the wallpaper always
      matches the dashboard counters the user is looking at). */
   function computeBgTrees() {
-    var trees = historical().concat(todayReal());
-    var extra = Math.max(0, liveTotal() - todayReal().length);
-    for (var i = 0; i < extra; i++) trees.push({ subject: SUBJ[(Math.random()*3)|0], qElo: 1100 + Math.random()*700 });
-    if (trees.length > CAP) { var step = trees.length / CAP, o = []; for (var j = 0; j < CAP; j++) o.push(trees[Math.floor(j*step)]); trees = o; }
+    var solved = solvedBank();
+    var trees = [];
+    var solvedByDate = {};
+
+    for (var i = 0; i < solved.length; i++) {
+      var q = solved[i];
+      var subj = normSub(q.subject);
+      var elo = qEloOf(q);
+
+      var dstr = (q.lastReviewedAt || q.solvedAt || q.createdAt || q.date || q.ts || '').toString().slice(0, 10);
+      if (dstr) {
+        if (!solvedByDate[dstr]) solvedByDate[dstr] = { physics: 0, chemistry: 0, maths: 0 };
+        solvedByDate[dstr][subj]++;
+      }
+
+      trees.push({ subject: subj, qElo: elo });
+    }
+
+    var store = loadDailyStore();
+    var today = todayStr();
+    store[today] = visualTodayCounts();
+
+    for (var dateStr in store) {
+      if (!Object.prototype.hasOwnProperty.call(store, dateStr)) continue;
+
+      var counts = (dateStr === today) ? store[today] : getSavedCounts(dateStr);
+      var solvedDate = solvedByDate[dateStr] || { physics: 0, chemistry: 0, maths: 0 };
+
+      for (var s = 0; s < SUBJ.length; s++) {
+        var subj = SUBJ[s];
+        var extra = Math.max(0, (counts[subj] || 0) - (solvedDate[subj] || 0));
+
+        for (var n = 0; n < extra; n++) {
+          trees.push({
+            subject: subj,
+            qElo: syntheticElo(dateStr, subj, n)
+          });
+        }
+      }
+    }
+
+    if (trees.length > CAP) {
+      var step = trees.length / CAP;
+      var out = [];
+      for (var j = 0; j < CAP; j++) out.push(trees[Math.floor(j * step)]);
+      trees = out;
+    }
+
     return trees;
   }
-  function bgSig() { return (window.questionBank ? window.questionBank.length : 0) + '|' + solvedBank().length + '|' + liveTotal(); }
+  function bgSig() {
+    var storeSig = '';
+    try { storeSig = localStorage.getItem(LS_DAILY) || ''; } catch (e) {}
+    return getBankSafe().length + '|' + solvedBank().length + '|' + liveTotal() + '|' + storeSig;
+  }
 
   var THREE = null, renderer, scene, camera, env = null, treeMat;
   var canvas, btn, pop, sw, opInput;
@@ -226,10 +340,34 @@
 
   /* react the instant a counter moves (manual +/- OR a real solve) */
   function watchCounters() {
-    var ids = ['physics-count', 'chemistry-count', 'maths-count'];
-    var els = ids.map(function (id) { return document.getElementById(id); });
-    if (els.some(function (e) { return !e; })) { setTimeout(watchCounters, 500); return; }
-    try { var mo = new MutationObserver(function () { if (enabled && built) rebuildIfNeeded(true); }); els.forEach(function (e) { mo.observe(e, { childList:true, subtree:true, characterData:true }); }); } catch (e) {}
+    var pending = false;
+
+    function schedule() {
+      if (pending) return;
+      pending = true;
+
+      requestAnimationFrame(function () {
+        pending = false;
+        if (enabled && built) rebuildIfNeeded(false);
+      });
+    }
+
+    try {
+      var mo = new MutationObserver(schedule);
+      mo.observe(document.documentElement, {
+        childList: true,
+        subtree: true,
+        characterData: true
+      });
+    } catch (e) {}
+
+    setInterval(function () {
+      if (enabled && built) rebuildIfNeeded(false);
+    }, 1500);
+
+    window.addEventListener('storage', function () {
+      if (enabled && built) rebuildIfNeeded(true);
+    });
   }
 
   function boot() {
