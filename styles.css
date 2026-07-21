@@ -4976,3 +4976,175 @@ body.dc-active .bento-toolbar.dc-fab-panel.open {
     transition: none !important; animation: none !important;
   }
 }
+
+/* ════════════════════════════════════════════════════════════════════════
+   DASHBOARD v2 — header removal · Time Bank card · bounty declutter ·
+   momentum glow-up. Pairs with dashboard-clean.js v2. Append-only +
+   reversible: delete that file, its <script> tag, and this block.
+   ════════════════════════════════════════════════════════════════════════ */
+
+/* ── "Grind Dashboard / Welcome back" header — gone on the dashboard only
+      (other tabs keep it; the flag tracks which view is active) ────────── */
+body.dc-dash-active #main-header { display: none !important; }
+
+/* ── Bounty board: drop the 15-day fix streak sparkline column ─────────── */
+#view-dashboard .dash-card-bounty .erm-sparkline-col { display: none !important; }
+#view-dashboard .dash-card-bounty .erm-layout { grid-template-columns: 1fr !important; }
+
+/* ── Time Bank card ────────────────────────────────────────────────────── */
+.dc-time-card {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px 26px;
+  flex-wrap: wrap;
+  padding: 18px 24px;
+  border-radius: 20px;
+  border: 1px solid transparent;
+  background:
+    linear-gradient(180deg, rgba(16,20,30,0.80), rgba(10,13,20,0.84)) padding-box,
+    conic-gradient(from var(--aes-angle, 0deg),
+      var(--telemetry, #3ddcff), rgba(61,220,255,0.10),
+      var(--vault, #a78bfa), rgba(61,220,255,0.10),
+      var(--telemetry, #3ddcff)) border-box;
+  -webkit-backdrop-filter: blur(16px) saturate(140%);
+  backdrop-filter: blur(16px) saturate(140%);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.09), 0 22px 46px -28px rgba(0,0,0,0.9);
+  animation: aesSpin 12s linear infinite;      /* slow-rotating cyan edge */
+  container-type: inline-size;
+  container-name: dctime;
+}
+html[data-mode="dusk"] .dc-time-card {
+  background:
+    linear-gradient(180deg, rgba(255,250,240,0.10), rgba(255,250,240,0.04)) padding-box,
+    conic-gradient(from var(--aes-angle, 0deg),
+      var(--telemetry), rgba(61,220,255,0.14), var(--vault),
+      rgba(61,220,255,0.14), var(--telemetry)) border-box;
+}
+.dc-time-main { display: flex; align-items: center; gap: 14px; min-width: 0; }
+.dc-time-icon {
+  width: 46px; height: 46px; border-radius: 14px; flex: 0 0 auto;
+  display: flex; align-items: center; justify-content: center;
+  color: var(--telemetry, #3ddcff);
+  background: rgba(61,220,255,0.10);
+  border: 1px solid rgba(61,220,255,0.30);
+  box-shadow: 0 0 18px -4px rgba(61,220,255,0.5), inset 0 1px 0 rgba(255,255,255,0.08);
+}
+.dc-time-txt { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.dc-time-kicker {
+  font-family: var(--aes-display, 'Chakra Petch', sans-serif);
+  font-size: 9.5px; font-weight: 700; letter-spacing: 2.4px;
+  color: var(--text-secondary);
+}
+.dc-time-total {
+  font-family: var(--aes-num, 'Space Grotesk', monospace);
+  font-size: clamp(26px, 3.4vw, 38px);
+  font-weight: 800; line-height: 1.05;
+  font-variant-numeric: tabular-nums;
+  background: linear-gradient(180deg, #ffffff, var(--telemetry, #3ddcff));
+  -webkit-background-clip: text; background-clip: text;
+  -webkit-text-fill-color: transparent;
+  filter: drop-shadow(0 0 14px rgba(61,220,255,0.25));
+}
+.dc-time-subs { display: flex; gap: 10px; flex-wrap: wrap; }
+.dc-time-chip {
+  display: flex; align-items: center; gap: 8px;
+  padding: 9px 14px; border-radius: 12px;
+  background: rgba(255,255,255,0.045);
+  border: 1px solid rgba(255,255,255,0.09);
+  font-size: 12px; color: var(--text-secondary);
+  transition: transform .18s ease, border-color .18s ease, box-shadow .18s ease;
+}
+.dc-time-chip:hover { transform: translateY(-2px); }
+.dc-time-chip i { width: 8px; height: 8px; border-radius: 50%; flex: 0 0 auto; }
+.dc-time-chip b {
+  font-family: var(--aes-num, monospace); font-size: 13.5px; font-weight: 700;
+  color: var(--text-primary); font-variant-numeric: tabular-nums;
+}
+.dc-time-chip.dc-phys i { background: var(--telemetry); box-shadow: 0 0 10px var(--telemetry); }
+.dc-time-chip.dc-phys:hover { border-color: rgba(61,220,255,0.45); box-shadow: 0 6px 18px -8px rgba(61,220,255,0.5); }
+.dc-time-chip.dc-chem i { background: var(--glow-green); box-shadow: 0 0 10px var(--glow-green); }
+.dc-time-chip.dc-chem:hover { border-color: rgba(34,197,94,0.45); box-shadow: 0 6px 18px -8px rgba(34,197,94,0.5); }
+.dc-time-chip.dc-math i { background: var(--furnace); box-shadow: 0 0 10px var(--furnace); }
+.dc-time-chip.dc-math:hover { border-color: rgba(255,178,36,0.45); box-shadow: 0 6px 18px -8px rgba(255,178,36,0.5); }
+/* card-width aware (container queries) + viewport fallback */
+@container dctime (max-width: 560px) {
+  .dc-time-main, .dc-time-subs { width: 100%; }
+  .dc-time-subs { justify-content: space-between; }
+  .dc-time-chip { flex: 1 1 0; justify-content: center; padding: 8px 10px; }
+}
+@media (max-width: 640px) {
+  .dc-time-card { flex-direction: column; align-items: stretch; padding: 16px 18px; }
+  .dc-time-subs { justify-content: space-between; }
+  .dc-time-chip { flex: 1 1 0; justify-content: center; padding: 8px 10px; }
+}
+
+/* ── Momentum Tracker glow-up ──────────────────────────────────────────── */
+/* cyan→violet gradient frame instead of the flat hairline */
+#view-dashboard .dash-card-momentum {
+  border: 1px solid transparent !important;
+  background:
+    linear-gradient(180deg, rgba(14,18,28,0.84), rgba(9,12,19,0.88)) padding-box,
+    linear-gradient(150deg, rgba(61,220,255,0.55), rgba(61,220,255,0.06) 45%,
+      rgba(167,139,250,0.45)) border-box !important;
+}
+html[data-mode="dusk"] #view-dashboard .dash-card-momentum {
+  background:
+    linear-gradient(180deg, rgba(255,250,240,0.10), rgba(255,250,240,0.04)) padding-box,
+    linear-gradient(150deg, rgba(61,220,255,0.6), rgba(61,220,255,0.10) 45%,
+      rgba(167,139,250,0.5)) border-box !important;
+}
+#view-dashboard .dash-card-momentum::before {
+  width: 64px !important; opacity: 1 !important;
+  background: linear-gradient(90deg, var(--telemetry), rgba(167,139,250,0.8), transparent) !important;
+  box-shadow: 0 0 14px rgba(61,220,255,0.55);
+}
+/* LIVE pulse on the kicker */
+#view-dashboard .dash-card-momentum .kicker { color: var(--telemetry) !important; }
+#view-dashboard .dash-card-momentum .kicker::before {
+  content: ''; display: inline-block; width: 6px; height: 6px; border-radius: 50%;
+  background: var(--telemetry); box-shadow: 0 0 9px var(--telemetry);
+  margin-right: 8px; vertical-align: 1px;
+  animation: dcLivePulse 1.8s ease-in-out infinite;
+}
+@keyframes dcLivePulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+/* HUD corner brackets + soft glow on the chart frame */
+#view-dashboard .dash-card-momentum .graph-display { position: relative; }
+#view-dashboard .dash-card-momentum .graph-display::before,
+#view-dashboard .dash-card-momentum .graph-display::after {
+  content: ''; position: absolute; width: 15px; height: 15px;
+  pointer-events: none; opacity: 0.75; z-index: 2;
+}
+#view-dashboard .dash-card-momentum .graph-display::before {
+  top: 7px; left: 7px;
+  border-top: 2px solid rgba(61,220,255,0.65);
+  border-left: 2px solid rgba(61,220,255,0.65);
+  border-radius: 4px 0 0 0;
+}
+#view-dashboard .dash-card-momentum .graph-display::after {
+  bottom: 7px; right: 7px;
+  border-bottom: 2px solid rgba(61,220,255,0.65);
+  border-right: 2px solid rgba(61,220,255,0.65);
+  border-radius: 0 0 4px 0;
+}
+#view-dashboard .dash-card-momentum #dynamic-graph {
+  filter: drop-shadow(0 0 16px rgba(61,220,255,0.10));
+}
+/* legend (injected by dashboard-clean.js) */
+.dc-mom-legend { display: flex; flex-wrap: wrap; gap: 8px 14px; margin-top: 12px; }
+.dc-lg {
+  display: inline-flex; align-items: center; gap: 7px;
+  font-size: 10.5px; font-weight: 600; color: var(--text-secondary);
+  padding: 4px 10px; border-radius: 999px;
+  background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08);
+}
+.dc-lg i { width: 9px; height: 9px; border-radius: 3px; flex: 0 0 auto; }
+.dc-lg .lg-bull   { background: var(--glow-green); box-shadow: 0 0 8px rgba(34,197,94,0.7); }
+.dc-lg .lg-bear   { background: var(--glow-red);   box-shadow: 0 0 8px rgba(248,113,113,0.7); }
+.dc-lg .lg-target { width: 16px; height: 0; border-radius: 0; border-top: 2px dashed var(--telemetry); box-shadow: none; }
+.dc-lg .lg-proj   { background: var(--vault); box-shadow: 0 0 8px rgba(167,139,250,0.7); opacity: 0.8; }
+
+@media (prefers-reduced-motion: reduce) {
+  .dc-time-card, #view-dashboard .dash-card-momentum .kicker::before { animation: none !important; }
+}

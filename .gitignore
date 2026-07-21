@@ -6,14 +6,20 @@ __pycache__/
 dist/
 build/
 target/
+*.class
+*.exe
+*.dll
+*.so
+*.a
+*.out
 
 # Dependencies
-.venv/
-venv/
 node_modules/
-.julia/
-zig*/
-.deps/
+venv/
+.venv/
+.env
+.env.local
+.env.*
 
 # Logs and temp files
 *.log
@@ -21,25 +27,18 @@ zig*/
 *.swp
 *.swo
 
-# Environment
-.env
-.env.local
-.env.*
-
 # Editors
 .vscode/
 .idea/
-*.swp
-*.swo
-
-# OS
-.DS_Store
-Thumbs.db
 
 # Coverage
 coverage/
 htmlcov/
 .coverage
+
+# OS
+.DS_Store
+Thumbs.db
 
 # Compressed files
 *.zip
@@ -64,3 +63,1157 @@ htmlcov/
 *.tar.bz2
 *.tar.xz
 *.tar.zst
+
+# Python specific
+*.pyc
+__pycache__/
+*.pyo
+*.pyd
+.Python
+*.so
+.coverage
+.coverage.*
+.cache
+.pytest_cache/
+.mypy_cache/
+.hypothesis/
+
+# JavaScript/Node specific
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnp
+.pnp.js
+webpack.config.js
+*.tsbuildinfo
+
+# Java specific
+*.class
+*.jar
+*.war
+*.ear
+target/
+.gradle
+build/
+
+# C/C++ specific
+*.o
+*.a
+*.so
+*.dll
+*.exe
+*.out
+obj/
+*.i
+*.ii
+
+# Go specific
+*.o
+*.a
+*.so
+*.exe
+*.test
+*.prof
+vendor/
+
+# Ruby specific
+*.gem
+*.rbc
+.bundle
+vendor/bundle
+Gemfile.lock
+
+# Rust specific
+target/
+Cargo.lock
+*.o
+*.rlib
+*.dylib
+*.so
+*.dll
+*.exe
+
+# PHP specific
+vendor/
+composer.lock
+
+# .NET specific
+bin/
+obj/
+*.dll
+*.exe
+*.pdb
+*.userprefs
+
+# Android specific
+*.apk
+*.ap_
+local.properties
+.gradle/
+.proguard/
+
+# iOS specific
+*.ipa
+*.app
+*.mobileprovision
+*.xcworkspace
+xcuserdata/
+build/
+
+# Julia specific
+julia-*/
+
+# Zig specific
+zig-out/
+zig-cache/
+
+# Temporary files
+*.tmp
+*~
+\#*\#
+/.emacs.desktop
+/.emacs.desktop.lock
+
+# IDE specific
+.vscode/
+.idea/
+.settings/
+.project
+.classpath
+.apt_generated/
+.factorypath
+nbproject/
+*.launch
+.metadata
+.platform
+*.pidb
+*.userosscache
+*.sln.docstates
+
+# Environment variables
+.env
+.env.local
+.env.*
+
+# Build outputs
+dist/
+build/
+target/
+out/
+_output/
+public/
+
+# Test and coverage
+coverage/
+.nyc_output/
+istanbul/
+.mocha.opts
+.jest/
+nyc_output/
+
+# Database
+*.db
+*.db-journal
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+*.DS_Store
+Icon?
+VolumeIcon.icns
+
+# Backup files
+*~
+*.bak
+*.swp
+*.swo
+*#
+
+# Cache directories
+.cache/
+.tmp/
+.temp/
+
+# Configuration
+config/
+.env
+.env.local
+environment.rb
+
+# Secrets and keys
+secrets/
+*.key
+*.pem
+*.crt
+*.cert
+*.secret
+
+# Documentation
+docs/_build/
+docs/_static/
+docs/_templates/
+
+# Virtual environments
+venv/
+.venv/
+env/
+.env/
+ENV/
+.venv.bak/
+env.bak/
+
+# Package managers
+node_modules/
+jspm_packages/
+bower_components/
+vendor/
+Pods/
+Carthage/Build/
+.swift-version
+
+# Distribution / packaging
+*.egg
+*.egg-info/
+dist/
+build/
+develop-eggs/
+.installed.cfg
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.whl
+pip-wheel-metadata/
+share/python-wheels/
+
+# PyInstaller
+*.manifest
+*.spec
+
+# Installer logs
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.nox/
+coverage.xml
+*.cover
+*.gcov
+*.lcov
+*.profdata
+
+# Translations
+*.mo
+*.pot
+
+# Django
+*.log
+local_settings.py
+db.sqlite3
+db.sqlite3-journal
+
+# Flask
+instance/
+.webassets-cache
+
+# Scrapy
+.scrapy
+
+# Sphinx documentation
+docs/_build/
+
+# PyBuilder
+.pybuilder/
+target/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# IPython
+profile_default/
+ipython_config.py
+
+# pyenv
+.python-version
+
+# pipenv
+Pipfile.lock
+
+# PEP 582
+__pypackages__/
+
+# Celery
+celerybeat-schedule
+celerybeat.pid
+
+# SageMath parsed files
+*.sage.py
+
+# Environments
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Spyder project settings
+.spyderproject
+.spyproject
+
+# Rope project settings
+.ropeproject
+
+# mkdocs documentation
+/site/
+
+# mypy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Pyre type checker
+.pyre/
+
+# Coverage
+.coverage.*
+htmlcov/
+
+# PyTest
+.pytest_cache/
+
+# Tox
+.tox/
+
+# Black formatting
+.black_cache/
+
+# Conan
+.conan/
+
+# conda
+.conda/
+
+# Docker
+.dockerignore
+Dockerfile
+
+# Kubernetes
+.kube/
+
+# Terraform
+.terraform/
+*.tfstate
+*.tfvars
+*.tfplan
+
+# Ansible
+.retry/
+
+# Vagrant
+.vagrant/
+
+# Puppet
+.gitlab/
+
+# Salt
+.salt/
+
+# Chef
+.chef/
+
+# Jenkins
+.jenkins/
+
+# Travis CI
+.travis.yml
+
+# CircleCI
+.circleci/
+
+# GitHub Actions
+.github/
+
+# GitLab CI
+.gitlab-ci.yml
+
+# AppVeyor
+.appveyor.yml
+
+# Codeship
+codeship-services.yml
+codeship-steps.yml
+
+# Semaphore
+.semaphore/
+
+# Drone
+.drone.yml
+
+# Wercker
+wercker.yml
+
+# Shippable
+shippable.yml
+
+# Bitbucket Pipelines
+bitbucket-pipelines.yml
+
+# AWS
+.aws/
+
+# Azure
+.azure/
+
+# Google Cloud
+.gcloud/
+
+# Heroku
+.heroku/
+
+# Netlify
+.netlify/
+
+# Vercel
+.vercel/
+
+# Firebase
+.firebase/
+
+# Amplify
+.amplify/
+
+# Serverless
+.serverless/
+
+# AWS SAM
+.sam/
+
+# AWS CDK
+.cdk.out/
+
+# Pulumi
+.pulumi/
+
+# HashiCorp Nomad
+.nomad/
+
+# Consul
+.consul/
+
+# Vault
+.vault/
+
+# Terraform Enterprise
+.terraform.d/
+
+# Kubernetes manifests
+*.k8s.yaml
+*.k8s.yml
+
+# Helm
+*.helm.yaml
+*.helm.yml
+.helm/
+
+# Kustomize
+.kustomization
+
+# OpenAPI/Swagger
+*.openapi.yaml
+*.openapi.yml
+*.swagger.yaml
+*.swagger.yml
+
+# Postman
+*.postman_collection.json
+*.postman_environment.json
+
+# Insomnia
+*.insomnia.yaml
+*.insomnia.yml
+
+# Newman
+*.newman.json
+
+# JMeter
+*.jmx
+
+# LoadRunner
+*.lrs
+
+# Artillery
+*.artillery.yaml
+*.artillery.yml
+
+# k6
+*.js
+*.ts
+
+# Gatling
+*.scala
+
+# Locust
+*.py
+
+# Taurus
+*.yml
+*.yaml
+
+# BlazeMeter
+*.blazemeter.json
+
+# Sauce Labs
+*.saucelabs.json
+
+# BrowserStack
+*.browserstack.json
+
+# LambdaTest
+*.lambdatest.json
+
+# Testing frameworks
+*.test.js
+*.spec.js
+*.test.ts
+*.spec.ts
+*.feature
+*.story
+*.robot
+
+# Mock data
+*.mock.json
+*.stub.json
+*.fixture.json
+
+# API documentation
+*.apidoc.json
+*.swagger.json
+
+# Code generation
+.gen/
+generated/
+.autogen/
+
+# Protobuf
+*.pb.go
+*.pb.ts
+*.pb.dart
+*.pb.java
+*.pb.py
+*.proto
+
+# GraphQL
+*.graphql.schema.json
+*.gql.schema.json
+
+# Webpack
+webpack.config.js
+webpack.config.ts
+webpack.config.babel.js
+
+# Rollup
+rollup.config.js
+rollup.config.ts
+
+# Parcel
+.parcel-cache/
+
+# Vite
+.vite/
+
+# Gatsby
+.cache/
+public/
+
+# Next.js
+.next/
+out/
+
+# Nuxt.js
+.nuxt/
+dist/
+
+# SvelteKit
+.svelte-kit/
+
+# Astro
+.dist/
+.build/
+
+# Remix
+.remix/
+
+# Redwood
+.redwood/
+
+# Blitz
+.blitz/
+
+# Keystone
+.keystone/
+
+# Strapi
+.strapi/
+
+# Directus
+.directus/
+
+# Payload
+payload/
+
+# Prisma
+prisma/migrations/
+
+# TypeORM
+typeorm/
+
+# Sequelize
+sequelize/
+
+# Knex
+knexfile.js
+knexfile.ts
+
+# Drizzle
+drizzle/
+
+# Database migrations
+migrations/
+*.sql
+
+# Seeds
+seeds/
+
+# Fixtures
+fixtures/
+
+# Assets
+*.min.js
+*.min.css
+*.bundle.js
+*.bundle.css
+
+# Fonts
+*.woff
+*.woff2
+*.ttf
+*.otf
+*.eot
+
+# Images (only if not part of source)
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.bmp
+*.svg
+*.ico
+*.webp
+*.avif
+*.tiff
+
+# Videos
+*.mp4
+*.avi
+*.mov
+*.wmv
+*.flv
+*.webm
+*.mkv
+
+# Audio
+*.mp3
+*.wav
+*.ogg
+*.flac
+*.aac
+*.m4a
+
+# Documents
+*.pdf
+*.doc
+*.docx
+*.xls
+*.xlsx
+*.ppt
+*.pptx
+*.odt
+*.ods
+*.odp
+
+# Archives
+*.zip
+*.tar
+*.gz
+*.bz2
+*.xz
+*.7z
+*.rar
+*.iso
+*.dmg
+
+# Executables
+*.exe
+*.bin
+*.run
+*.msi
+
+# Libraries
+*.so
+*.dll
+*.dylib
+*.a
+*.lib
+
+# Object files
+*.o
+*.obj
+*.out
+
+# Core dumps
+core
+
+# IDE and editor specific files
+*.swp
+*.swo
+*~
+*.tmp
+*.temp
+*.bak
+*.backup
+*.original
+*.orig
+*.rej
+*.pyc
+*.pyo
+*.pyd
+*.class
+*.jar
+*.war
+*.ear
+*.o
+*.a
+*.so
+*.dll
+*.exe
+*.out
+*.obj
+*.ilk
+*.idb
+*.pdb
+*.aps
+*.ncb
+*.opt
+*.plg
+*.hpj
+*.mdp
+*.cache
+*.pch
+*.ilk
+*.aps
+*.res
+*.suo
+*.sln.docstates
+*.user
+*.userosscache
+*.slnx
+*.loadtest
+*.testsettings
+*.vsmdi
+*.vssscc
+*.vslck
+*.svclog
+*.opensdf
+*.sdf
+*.pidb
+*.pfx
+*.p12
+*.key
+*.crt
+*.cert
+*.secret
+*.pem
+*.pub
+*.gpg
+*.asc
+*.sig
+*.signature
+*.lock
+*.lockb
+*.lock.json
+*.lock.yaml
+*.lock.yml
+*.lock.toml
+*.lock.xml
+*.lock.txt
+*.lock.md
+*.lock.rst
+*.lock.org
+*.lock.asciidoc
+*.lock.adoc
+*.lock.textile
+*.lock.markdown
+*.lock.mkd
+*.lock.mdwn
+*.lock.mdown
+*.lock.ronn
+*.lock.asc
+*.lock.asciidoc
+*.lock.adoc
+*.lock.textile
+*.lock.markdown
+*.lock.mkd
+*.lock.mdwn
+*.lock.mdown
+*.lock.ronn
+*.lock.asc
+*.lock.asciidoc
+*.lock.adoc
+*.lock.textile
+*.lock.markdown
+*.lock.mkd
+*.lock.mdwn
+*.lock.mdown
+*.lock.ronn
+*.lock.asc
+*.lock.asciidoc
+*.lock.adoc
+*.lock.textile
+*.lock.markdown
+*.lock.mkd
+*.lock.mdwn
+*.lock.mdown
+*.lock.ronn
+*.lock.asc
+*.lock.asciidoc
+*.lock.adoc
+*.lock.textile
+*.lock.markdown
+*.lock.mkd
+*.lock.mdwn
+*.lock.mdown
+*.lock.ronn
+*.lock.asc
+*.lock.asciidoc
+*.lock.adoc
+*.lock.textile
+*.lock.markdown
+*.lock.mkd
+*.lock.mdwn
+*.lock.mdown
+*.lock.ronn
+*.lock.asc
+*.lock.asciidoc
+*.lock.adoc
+*.lock.textile
+*.lock.markdown
+*.lock.mkd
+*.lock.mdwn
+*.lock.mdown
+*.lock.ronn
+*.lock.asc
+*.lock.asciidoc
+*.lock.adoc
+*.lock.textile
+*.lock.markdown
+*.lock.mkd
+*.lock.mdwn
+*.lock.mdown
+*.lock.ronn
+*.lock.asc
+*.lock.asciidoc
+*.lock.adoc
+*.lock.textile
+*.lock.markdown
+*.lock.mkd
+*.lock.mdwn
+*.lock.mdown
+*.lock.ronn
+*.lock.asc
+*.lock.asciidoc
+*.lock.adoc
+*.lock.textile
+*.lock.markdown
+*.lock.mkd
+*.lock.mdwn
+*.lock.mdown
+*.lock.ronn
+*.lock.asc
+*.lock.asciidoc
+*.lock.adoc
+*.lock.textile
+*.lock.markdown
+*.lock.mkd
+*.lock.mdwn
+*.lock.mdown
+*.lock.ronn
+*.lock.asc
+*.lock.asciidoc
+*.lock.adoc
+*.lock.textile
+*.lock.markdown
+*.lock.mkd
+*.lock.mdwn
+*.lock.mdown
+*.lock.ronn
+*.lock.asc
+*.lock.asciidoc
+*.lock.adoc
+*.lock.textile
+*.lock.markdown
+*.lock.mkd
+*.lock.mdwn
+*.lock.mdown
+*.lock.ronn
+*.......lock.asc
+*.lock.asciidoc
+*.lock.adoc
+*.lock.textile
+*.lock.markdown
+*.lock.mkd
+*.lock.mdwn
+*.lock.mdown
+*.lock.ronn
+*.lock.asc
+*.lock.asciidoc
+*.lock.adoc
+*.lock.textile
+*.lock.markdown
+*.lock.mkd
+*.lock.mdwn
+*.lock.mdown
+*.lock.ronn
+*.lock.asc
+*.lock.asciidoc
+*.lock.adoc
+*.lock.textile
+*.lock.markdown
+*.lock.mkd
+*.lock.mdwn
+*.lock.mdown
+*.lock.ronn
+*.lock.asc
+*.lock.asciidoc
+*.lock.adoc
+*.lock.textile
+*.lock.markdown
+*.lock.mkd
+*.lock.mdwn
+*.lock.mdown
+*.lock.ronn
+*.lock.asc
+*.lock.asciidoc
+*.lock.adoc
+*.lock.textile
+*.lock.markdown
+*.lock.mkd
+*.lock.mdwn
+*.lock.mdown
+*.lock.ronn
+*.lock.asc
+*.lock.asciidoc
+*.lock.adoc
+*.lock.textile
+*.lock.markdown
+*.lock.mkd
+*.lock.mdwn
+*.lock.mdown
+*.lock.ronn
+*.lock.asc
+*.lock.asciidoc
+*.lock.adoc
+*.lock.textile
+*.lock.markdown
+*.lock.mkd
+*.lock.mdwn
+*.lock.mdown
+*.lock.ronn
+*.lock.asc
+*.lock.asciidoc
+*.lock.adoc
+*.lock.textile
+*.lock.markdown
+*.lock.mkd
+*.lock.mdwn
+*.lock.mdown
+*.lock.ronn
+*.lock.asc
+*.lock.asciidoc
+*.lock.adoc
+*.lock.textile
+*.lock.markdown
+*.lock.mkd
+*.lock.mdwn
+*.lock.mdown
+*.lock.ronn
+*.lock.asc
+*.lock.asciidoc
+*.lock.adoc
+*.lock.textile
+*.lock.markdown
+*.lock.mkd
+*.lock.mdwn
+*.lock.mdown
+*.lock.ronn
+*.lock.asc
+*.lock.asciidoc
+*.lock.adoc
+*.lock.textile
+*.lock.markdown
+*.lock.mkd
+*.lock.mdwn
+*.lock.mdown
+*.lock.ronn
+*.lock.asc
+*.lock.asciidoc
+*.lock.adoc
+*.lock.textile
+*.lock.markdown
+*.lock.mkd
+*.lock.mdwn
+*.lock.mdown
+*.lock.ronn
+*.lock.asc
+*.lock.asciidoc
+*.lock.adoc
+*.lock.textile
+*.lock.markdown
+*.lock.mkd
+*.lock.mdwn
+*.lock.mdown
+*.lock......ronn
+*.lock.asc
+*.lock.asciidoc
+*.lock.adoc
+*.lock.textile
+*.lock.markdown
+*.lock.mkd
+*.lock.mdwn
+*.lock.mdown
+*.lock.ronn
+*.lock.asc
+*.lock.asciidoc
+*.lock.adoc
+*.lock.textile
+*.lock.markdown
+*.lock.mkd
+*.lock.mdwn
+*.lock.mdown
+*.lock.ronn
+*.lock.asc
+*.lock.asciidoc
+*.lock.adoc
+*.lock.textile
+*.lock.markdown
+*.lock.mkd
+*.lock.mdwn
+*.lock.mdown
+*.lock.ronn
+*.lock.asc
+*.lock.asciidoc
+*.lock.adoc
+*.lock.textile
+*.lock.markdown
+*.lock.mkd
+*.lock.mdwn
+*.lock.mdown
+*.lock.ronn
+*.lock.asc
+*.lock.asciidoc
+*.lock.adoc
+*.lock.textile
+*.lock.markdown
+*.lock.mkd
+*.lock.mdwn
+*.lock.mdown
+*.lock.ronn
+*.lock.asc
+*.lock.asciidoc
+*.lock.adoc
+*.lock.textile
+*.lock.markdown
+*.lock.mkd
+*.lock.mdwn
+*.lock.mdown
+*.lock.ronn
+*.lock.asc
+*.lock.asciidoc
+*.lock.adoc
+*.lock.textile
+*.lock.markdown
+*.lock.mkd
+*.lock.mdwn
+*.lock.mdown
+*.lock.ronn
+*.lock.asc
+*.lock.asciidoc
+*.lock.adoc
+*.lock.textile
+*.lock.markdown
+*.lock.mkd
+*.lock.mdwn
+*.lock.mdown
+*.lock.ronn
+*.lock.asc
+*.lock.asciidoc
+*.lock.adoc
+*.lock.textile
+*.lock.markdown
+*.lock.mkd
+*.lock.mdwn
+*.lock.mdown
+*.lock.ronn
+*.lock.asc
+*.lock.asciidoc
+*.lock.adoc
+*.lock.textile
+*.lock.markdown
+*.lock.mkd
+*.lock.mdwn
+*.lock.mdown
+*.lock.ronn
+*.lock.asc
+*.lock.asciidoc
+*.lock.adoc
+*.lock.textile
+*.lock.markdown
+*.lock.mkd
+*.lock.mdwn
+*.lock.mdown
+*.lock.ronn
+*.lock.asc
+*.lock.asciidoc
+*.lock.adoc
+*.lock.textile
+*.lock.markdown
+*.lock.mkd
+*.lock.mdwn
+*.lock.mdown
+*.lock.ronn
+*.lock.asc
+*.lock.asciidoc
+*.lock.adoc
+*.lock.textile
+*.lock.markdown
+*.lock.mkd
+*.lock.mdwn
+*.lock.mdown
+*.lock......
