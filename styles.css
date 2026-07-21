@@ -5327,3 +5327,58 @@ html[data-mode="dusk"] #practice-modal .practice-cockpit { --ck-surface: #31364e
    Reversible: delete this rule.
    ════════════════════════════════════════════════════════════════════════ */
 #practice-modal .practice-cockpit #elo-header-slot { display: none !important; }
+
+/* ════════════════════════════════════════════════════════════════════════
+   LIVING WORLD WALLPAPER + DAILY ISLAND — pairs with forest-bg.js and
+   forest-island.js. Append-only + reversible: delete this block AND the
+   two <script> tags to fully remove both features (the grid + the
+   momentum graph come straight back). Nothing in the app core is touched.
+   ════════════════════════════════════════════════════════════════════════ */
+/* ── the wallpaper canvas sits behind the whole app shell (z 0) ── */
+#forest-bg-canvas { position: fixed; inset: 0; width: 100%; height: 100%; z-index: 0; pointer-events: none; opacity: 0; transition: opacity .7s ease; display: block; }
+body.forest-bg-on #forest-bg-canvas { opacity: var(--forest-bg-op, .5); }
+.bg-grid-overlay { transition: opacity .7s ease; }
+body.forest-bg-on .bg-grid-overlay { opacity: 0; }
+body.forest-bg-on .ambient-glow { opacity: 0; transition: opacity .7s ease; }
+
+/* ── the 🌲 World toggle (top of the sidebar / nav header) ── */
+.forest-bg-btn { display: inline-flex; align-items: center; gap: 8px; flex: 0 0 auto; margin: 0 4px; padding: 8px 12px; background: rgba(255,255,255,.05); border: 1px solid rgba(255,255,255,.08); border-radius: 12px; color: var(--text-primary,#eef1f6); font-family: var(--font-display,'Chakra Petch',sans-serif); font-size: 12px; font-weight: 700; letter-spacing: .4px; cursor: pointer; white-space: nowrap; -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); transition: border-color .18s, box-shadow .18s, transform .18s, background .18s; }
+.forest-bg-btn:hover { border-color: rgba(61,220,255,.5); box-shadow: 0 0 16px rgba(61,220,255,.3); transform: translateY(-1px); }
+.forest-bg-btn.active { border-color: rgba(34,197,94,.6); background: rgba(34,197,94,.14); box-shadow: 0 0 16px rgba(34,197,94,.35); }
+.fb-dot { font-size: 14px; line-height: 1; }
+.fb-chev { font-size: 9px; opacity: .6; transition: transform .2s; }
+.forest-bg-btn[aria-expanded="true"] .fb-chev { transform: rotate(180deg); }
+.sidebar.collapsed .fb-lbl, .sidebar.collapsed .fb-chev { display: none; }
+.sidebar.collapsed .forest-bg-btn { padding: 8px; }
+
+/* ── the opacity / on-off popover ── */
+.forest-bg-pop { position: fixed; z-index: 100001; width: 230px; padding: 14px; border-radius: 16px; background: linear-gradient(180deg, rgba(18,20,30,.94), rgba(10,12,18,.96)); -webkit-backdrop-filter: blur(22px) saturate(150%); backdrop-filter: blur(22px) saturate(150%); border: 1px solid rgba(255,255,255,.10); box-shadow: 0 24px 60px -20px rgba(0,0,0,.9), inset 0 1px 0 rgba(255,255,255,.07); opacity: 0; transform: translateY(-8px) scale(.96); transform-origin: top left; pointer-events: none; transition: opacity .18s, transform .22s cubic-bezier(.22,1.2,.36,1); }
+.forest-bg-pop.open { opacity: 1; transform: none; pointer-events: auto; }
+.fb-pop-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 12px; }
+.fb-pop-title { font-size: 11px; font-weight: 700; letter-spacing: 1px; color: #fff; }
+.fb-switch { position: relative; width: 42px; height: 24px; flex: 0 0 auto; }
+.fb-switch input { opacity: 0; width: 0; height: 0; position: absolute; }
+.fb-slider { position: absolute; inset: 0; border-radius: 99px; background: rgba(255,255,255,.12); cursor: pointer; transition: .2s; }
+.fb-slider:before { content: ""; position: absolute; height: 18px; width: 18px; left: 3px; bottom: 3px; border-radius: 50%; background: #fff; transition: .2s; box-shadow: 0 1px 3px rgba(0,0,0,.4); }
+.fb-switch input:checked + .fb-slider { background: linear-gradient(135deg, #22c55e, #16a34a); }
+.fb-switch input:checked + .fb-slider:before { transform: translateX(18px); }
+.fb-pop-l { display: block; font-size: 9px; letter-spacing: 1.4px; color: var(--text-secondary,#9aa3b5); font-weight: 700; margin-bottom: 6px; text-transform: uppercase; }
+#fb-op { width: 100%; -webkit-appearance: none; appearance: none; height: 6px; border-radius: 99px; background: rgba(255,255,255,.12); outline: none; cursor: pointer; }
+#fb-op::-webkit-slider-thumb { -webkit-appearance: none; width: 16px; height: 16px; border-radius: 50%; background: #fff; box-shadow: 0 0 0 3px rgba(34,197,94,.4); cursor: pointer; }
+#fb-op::-moz-range-thumb { width: 16px; height: 16px; border: none; border-radius: 50%; background: #fff; box-shadow: 0 0 0 3px rgba(34,197,94,.4); }
+.fb-pop-note { margin-top: 10px; font-size: 10px; color: var(--text-muted,#5b6478); line-height: 1.4; }
+
+/* ── the daily island (inside the old momentum card) ── */
+#forest-island-host { position: relative; display: flex; flex-direction: column; gap: 10px; }
+#forest-island-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 8px; }
+.fi-titlewrap { display: flex; flex-direction: column; gap: 2px; }
+.fi-kicker { font-family: var(--font-display,'Chakra Petch',sans-serif); font-size: 9.5px; font-weight: 700; letter-spacing: 2.4px; color: var(--telemetry,#3ddcff); }
+.fi-title { font-family: var(--font-display,'Chakra Petch',sans-serif); font-size: 16px; font-weight: 700; color: #fff; }
+.fi-right { text-align: right; }
+.fi-count { font-family: var(--font-num,'Space Grotesk',monospace); font-size: 24px; font-weight: 800; color: #fff; line-height: 1; }
+.fi-sub { font-size: 8.5px; letter-spacing: 1.2px; color: var(--text-secondary,#9aa3b5); text-transform: uppercase; }
+#forest-island-canvas { width: 100%; height: 220px; display: block; border-radius: 14px; background: radial-gradient(120% 90% at 50% 0%, rgba(61,220,255,.05), transparent 60%), linear-gradient(180deg, #070910, #0a0d16); box-shadow: inset 0 1px 0 rgba(255,255,255,.05), inset 0 0 60px -40px rgba(61,220,255,.35); }
+.fi-empty { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: var(--text-muted,#5b6478); font-size: 12px; pointer-events: none; text-align: center; padding: 0 16px; }
+/* hide the original momentum content ONLY while the island is mounted,
+   without deleting a single node (so a failure restores it cleanly) */
+#view-dashboard .dash-card-momentum.island-active .fi-orig { display: none !important; }
