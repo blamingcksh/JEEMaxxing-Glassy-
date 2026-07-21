@@ -4836,6 +4836,7 @@ export function deactivateOverheat() {
             changeCount(AppState.currentQ.subject, 1);
             triggerRedFlash();
             playWrongSound();
+            AppState._ckComboBreak = true; // FIX: combo always breaks on a miss
 
             if (Math.random() < 0.2) {
                 triggerStreakShield();
@@ -4923,6 +4924,7 @@ export function deactivateOverheat() {
                 }
                 triggerRedFlash();
                 playWrongSound();
+                AppState._ckComboBreak = true; // FIX: combo always breaks on a miss
 
                 if (Math.random() < 0.2) {
                     triggerStreakShield();
@@ -6868,6 +6870,13 @@ const globalMathObserver = new MutationObserver(function (mutations) {
           CK.sessionTarget = Math.max(1, (AppState.practiceQuestions && AppState.practiceQuestions.length) || 1);
           CK.crit = 0; CK.critPrimed = false;
         }
+        // FIX: event-driven combo break — fires even when a rare streak-freeze
+        // shield saves the flame, so a wrong answer ALWAYS drops the combo.
+        if (AppState._ckComboBreak) {
+          AppState._ckComboBreak = false;
+          CK.combo = 0; CK.critPrimed = false;
+          pop($('ck-combo'));
+        }
         const st = AppState.practiceCorrectStreak || 0;
         if (st > CK.lastStreak) {
           if (CK.critPrimed) { critPayout(); CK.critPrimed = false; CK.crit = 0; }
@@ -6879,12 +6888,16 @@ const globalMathObserver = new MutationObserver(function (mutations) {
           if (CK.combo > 0 && CK.combo % 5 === 0) { CK.shields += 1; persistShields(); setT('ck-shield-n', String(CK.shields)); pop($('ck-shields')); }
           pop($('ck-combo'));
         } else if (st < CK.lastStreak && CK.lastStreak > 0) {
+          // FIX: a broken streak ALWAYS resets the combo. Persisted shields now
+          // save the CRIT charge (visible 🛡 SAVED), never the combo — previously
+          // shields silently swallowed every miss and the combo never reset.
+          CK.combo = 0; CK.critPrimed = false;
           if (CK.shields > 0) {
             CK.shields -= 1; persistShields(); setT('ck-shield-n', String(CK.shields));
             setT('ck-crit-lbl', '🛡 SAVED'); pop($('ck-shields'));
             setTimeout(() => setT('ck-crit-lbl', '⚡ CRIT'), 1000);
           } else {
-            CK.combo = 0; CK.crit = Math.max(0, CK.crit - 50); CK.critPrimed = false;
+            CK.crit = Math.max(0, CK.crit - 50);
           }
         }
         CK.lastStreak = st;
