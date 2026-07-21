@@ -546,8 +546,15 @@ function ensureForestLabOverlay() {
   labFrame = labOverlay.querySelector('#forest-lab-frame');
 
   labFrame.addEventListener('load', function () {
-    if (labOverlay.classList.contains('open')) labOverlay.classList.add('loaded');
-  });
+  if (labOverlay.classList.contains('open')) labOverlay.classList.add('loaded');
+
+  try {
+    labFrame.contentWindow.postMessage({
+      type: 'JEEMAX_FOREST_DATA',
+      questionBank: window.questionBank || []
+    }, '*');
+  } catch (e) {}
+});
 
   labOverlay.querySelector('#forest-lab-close').addEventListener('click', closeForestLab);
 
