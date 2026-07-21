@@ -1,448 +1,88 @@
-/* ============================================================================
-   forest-bg.js  ·  "Living World" wallpaper  (APP file)
-   ----------------------------------------------------------------------------
-   DEPENDENCY MAP  — two worlds, never cross the streams:
-
-        MAIN APP (index.html)                  LAB (forest-lab.html)
-        ├─ forest-bg.js    ◄── THIS FILE       ├─ forest-lab.html
-        ├─ forest-island.js                    └─ forest-juice.js  (LAB-ONLY!)
-        └─ styles.css  [body.forest-bg-on block]
-
-   • forest-juice.js is LAB-ONLY. Never add it to index.html (it waits for a
-     lab-only API and would just idle forever in the app).
-   • ISOLATED + SAFE: if anything here throws, the toggle no-ops + a toast
-     shows and the engineering grid stays. The app can NEVER be blanked by
-     this file. The canvas even carries its own inline styles, so the
-     wallpaper shows even if the CSS block is missing.
-   • TREE SOURCE = whole journey (questionBank solved, all-time)  PLUS
-     today's live counter total — so manual +/- taps AND real solves both
-     grow the forest, instantly (MutationObserver on the counters).
-   ============================================================================ */
+/* forest-bg.js — Living World wallpaper (complete, centre-first planting, synced) */
 (function () {
-  'use strict';
-  if (window.__forestBgInit) return; window.__forestBgInit = true;
-  var LS_ON = 'jeemax_forest_bg', LS_OP = 'jeemax_forest_bg_op';
-  var CAP = 6000, WL = -1.1, FRAME = 1000 / 30;
-  var SUBJ = ['physics', 'chemistry', 'maths'];
-
-  function toast(m) { console.warn('[forest-bg]', m); try { var d = document.createElement('div'); d.textContent = '⚠ ' + m; Object.assign(d.style, { position:'fixed', left:'50%', bottom:'14px', transform:'translateX(-50%)', zIndex:'60', background:'rgba(20,16,8,.92)', border:'1px solid rgba(255,178,36,.4)', color:'#ffd9a0', padding:'8px 14px', borderRadius:'10px', font:'12px/1.4 monospace', maxWidth:'88vw', boxShadow:'0 8px 24px rgba(0,0,0,.6)', pointerEvents:'none' }); document.body.appendChild(d); setTimeout(function(){ d.style.transition='opacity .5s'; d.style.opacity='0'; setTimeout(function(){ if (d.parentNode) d.parentNode.removeChild(d); }, 600); }, 6000); } catch (_) {} }
-  function el(tag, a) { var n = document.createElement(tag); if (a) for (var k in a) { if (k === 'html') n.innerHTML = a[k]; else if (k === 'class') n.className = a[k]; else n.setAttribute(k, a[k]); } return n; }
-  function hash(x, z) { var n = Math.sin(x * 127.1 + z * 311.7) * 43758.5453; return n - Math.floor(n); }
-  function vnoise(x, z) { var xi = Math.floor(x), zi = Math.floor(z), xf = x - xi, zf = z - zi, u = xf*xf*(3-2*xf), v = zf*zf*(3-2*zf), a = hash(xi,zi), b = hash(xi+1,zi), c = hash(xi,zi+1), d = hash(xi+1,zi+1); return a*(1-u)*(1-v)+b*u*(1-v)+c*(1-u)*v+d*u*v; }
-  function heightAt(x, z) { var h = (vnoise(x*0.035,z*0.035)-0.5)*8 + (vnoise(x*0.09,z*0.09)-0.5)*2.5 + (vnoise(x*0.2,z*0.2)-0.5)*0.8; var dd = Math.hypot(x+9, z-7); h -= Math.max(0, 3.4 - dd*0.5); return h; }
-  function realTOD() { var d = new Date(); return ((d.getHours() + d.getMinutes()/60) / 24) * 100; }
-  function nightFactor(t) { var u = t/100; return Math.max(0, Math.min(1, Math.abs(u-0.5)*2)); }
-  function normSub(s) { s = (s||'').toString().toLowerCase().trim(); return (s==='math'||s==='mathematics') ? 'maths' : (SUBJ.indexOf(s)>=0 ? s : 'physics'); }
-  function qEloOf(q) { return (typeof q.qElo === 'number' && q.qElo > 0) ? q.qElo : 1200; }
-  function todayStr() {
-    return new Date().toLocaleDateString('en-CA');
-  }
-  function rc(id) { var e = document.getElementById(id); return e ? (parseInt(e.textContent, 10) || 0) : 0; }
-
-  var LS_DAILY = 'jeemax_forest_daily_v1';
-
-  function loadDailyStore() {
-    try {
-      var o = JSON.parse(localStorage.getItem(LS_DAILY) || '{}');
-      return (o && typeof o === 'object') ? o : {};
-    } catch (e) {
-      return {};
-    }
-  }
-
-  function getSavedCounts(date) {
-    var st = loadDailyStore();
-    var c = st[date] || {};
-    return {
-      physics: parseInt(c.physics, 10) || 0,
-      chemistry: parseInt(c.chemistry, 10) || 0,
-      maths: parseInt(c.maths, 10) || 0
-    };
-  }
-
-  function liveCounts() {
-    var live = {
-      physics: rc('physics-count'),
-      chemistry: rc('chemistry-count'),
-      maths: rc('maths-count')
-    };
-
-    try {
-      if (window.solved) {
-        live.physics = Math.max(live.physics, parseInt(window.solved.physics, 10) || 0);
-        live.chemistry = Math.max(live.chemistry, parseInt(window.solved.chemistry, 10) || 0);
-        live.maths = Math.max(live.maths, parseInt(window.solved.maths, 10) || 0);
-      }
-    } catch (e) {}
-
-    return live;
-  }
-
-  function visualTodayCounts() {
-    var live = liveCounts();
-    var saved = getSavedCounts(todayStr());
-
-    return {
-      physics: Math.max(live.physics, saved.physics),
-      chemistry: Math.max(live.chemistry, saved.chemistry),
-      maths: Math.max(live.maths, saved.maths)
-    };
-  }
-
-  function liveTotal() {
-    var domTotal = rc('physics-count') + rc('chemistry-count') + rc('maths-count');
-
-    var appTotal = 0;
-    try {
-      if (window.solved) {
-        appTotal =
-          (parseInt(window.solved.physics, 10) || 0) +
-          (parseInt(window.solved.chemistry, 10) || 0) +
-          (parseInt(window.solved.maths, 10) || 0);
-      }
-    } catch (e) {}
-
-    return Math.max(domTotal, appTotal);
-  }
-
-  function syntheticElo(dateStr, subj, i) {
-    var h = hash(dateStr.length + i * 7 + 3, subj.length * 3 + i * 11 + 1);
-    return 1000 + Math.floor(h * 800);
-  }
-
-  function getBankSafe() {
-    try {
-      if (Array.isArray(window.questionBank) && window.questionBank.length) return window.questionBank;
-      if (window.AppState && Array.isArray(window.AppState.questionBank) && window.AppState.questionBank.length) {
-        return window.AppState.questionBank;
-      }
-    } catch (e) {}
-    return [];
-  }
-
-  function solvedBank() {
-    var qb = getBankSafe();
-    var o = [];
-    for (var i = 0; i < qb.length; i++) {
-      var q = qb[i];
-      if (q && q.status === 'solved') o.push(q);
-    }
-    return o;
-  }
-  function historical() { var tk = todayStr(), qb = solvedBank(), o = []; for (var i = 0; i < qb.length; i++) { var q = qb[i]; if ((q.lastReviewedAt || '').slice(0,10) !== tk) o.push({ subject: normSub(q.subject), qElo: qEloOf(q) }); } return o; }
-  function todayReal() { var tk = todayStr(), qb = solvedBank(), o = []; for (var i = 0; i < qb.length; i++) { var q = qb[i]; if ((q.lastReviewedAt || '').slice(0,10) === tk) o.push({ subject: normSub(q.subject), qElo: qEloOf(q) }); } return o; }
-  /* the blend: all-time history + today's real solves + synthetic fillers for
-     any manual "+" taps beyond the real solves (so the wallpaper always
-     matches the dashboard counters the user is looking at). */
-  function dateKeyFromAny(s) {
-    var d = new Date(s);
-    if (isNaN(d.getTime())) return '';
-    var m = ('0' + (d.getMonth() + 1)).slice(-2);
-    var day = ('0' + d.getDate()).slice(-2);
-    return d.getFullYear() + '-' + m + '-' + day;
-  }
-
-  function computeBgTrees() {
-    var solved = solvedBank();
-    var trees = [];
-    var solvedByDate = {};
-
-    for (var i = 0; i < solved.length; i++) {
-      var q = solved[i];
-      var subj = normSub(q.subject);
-      var elo = qEloOf(q);
-
-      var dstr = dateKeyFromAny(
-        q.lastReviewedAt || q.solvedAt || q.createdAt || q.date || q.ts || ''
-      );
-
-      if (dstr) {
-        if (!solvedByDate[dstr]) solvedByDate[dstr] = { physics: 0, chemistry: 0, maths: 0 };
-        solvedByDate[dstr][subj]++;
-      }
-
-      trees.push({ subject: subj, qElo: elo });
-    }
-
-    var store = loadDailyStore();
-    var today = todayStr();
-    store[today] = visualTodayCounts();
-
-    for (var dateStr in store) {
-      if (!Object.prototype.hasOwnProperty.call(store, dateStr)) continue;
-
-      var counts = (dateStr === today) ? store[today] : getSavedCounts(dateStr);
-      var solvedDate = solvedByDate[dateStr] || { physics: 0, chemistry: 0, maths: 0 };
-
-      for (var s = 0; s < SUBJ.length; s++) {
-        var subj = SUBJ[s];
-        var extra = Math.max(0, (counts[subj] || 0) - (solvedDate[subj] || 0));
-
-        for (var n = 0; n < extra; n++) {
-          trees.push({
-            subject: subj,
-            qElo: syntheticElo(dateStr, subj, n)
-          });
-        }
-      }
-    }
-
-    if (trees.length > CAP) {
-      var step = trees.length / CAP;
-      var out = [];
-      for (var j = 0; j < CAP; j++) out.push(trees[Math.floor(j * step)]);
-      trees = out;
-    }
-
-    return trees;
-  }
-  function bgSig() {
-    return getBankSafe().length + '|' + solvedBank().length + '|' + liveTotal();
-  }
-
-  var THREE = null, renderer, scene, camera, env = null, treeMat;
-  var canvas, btn, pop, sw, opInput;
-  var enabled = false, building = false, built = false, opacity = 0.5, lastSig = '';
-  var raf = null, last = 0, elT = 0, orbit = 0, curTOD = 50, lastTOD = 0;
-
-  var TOD = [
-    { t:0,   top:0x0a0e1c, bot:0x141a2a, sun:0x3a4a6a, sunI:0.15, hemi:0x2a3040, fog:0x0e1220 },
-    { t:22,  top:0x2a3a5e, bot:0xe8956a, sun:0xffb27a, sunI:0.70, hemi:0x5a5a6a, fog:0x3a3040 },
-    { t:50,  top:0x4a7ec0, bot:0xc4dcec, sun:0xfff2e0, sunI:1.15, hemi:0x8aa0b8, fog:0x9ab4c8 },
-    { t:78,  top:0x3a2a52, bot:0xe07a44, sun:0xff8a4a, sunI:0.75, hemi:0x6a5060, fog:0x4a3444 },
-    { t:100, top:0x0a0e1c, bot:0x141a2a, sun:0x3a4a6a, sunI:0.15, hemi:0x2a3040, fog:0x0e1220 }
-  ];
-  function applyTOD(v) {
-    if (!env) return; curTOD = v; var a = TOD[0], b = TOD[TOD.length-1];
-    for (var i = 0; i < TOD.length-1; i++) if (v >= TOD[i].t && v <= TOD[i+1].t) { a = TOD[i]; b = TOD[i+1]; break; }
-    var f = (v - a.t) / Math.max(0.0001, b.t - a.t);
-    function L(x, y) { return new THREE.Color(x).lerp(new THREE.Color(y), f); }
-    env.skyTop.copy(L(a.top, b.top)); env.skyBot.copy(L(a.bot, b.bot));
-    env.sun.color.copy(L(a.sun, b.sun)); env.sun.intensity = a.sunI + (b.sunI - a.sunI) * f;
-    env.sun.position.set((v/100 - 0.5) * 160, 70, 30);
-    env.hemi.color.copy(L(a.hemi, b.hemi)); env.hemi.groundColor.copy(env.skyBot).multiplyScalar(0.5);
-    env.fog.color.copy(L(a.fog, b.fog));
-  }
-
-  function loadThree() {
-    var urls = ['https://esm.sh/three@0.160.0', 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js', 'https://unpkg.com/three@0.160.0/build/three.module.js'];
-    function tryOne(i) { return new Promise(function (res, rej) { if (i >= urls.length) return rej(new Error('all CDNs failed')); import(urls[i]).then(function (m) { console.log('[forest-bg] three ← ' + urls[i]); res(m); }).catch(function () { tryOne(i+1).then(res, rej); }); }); }
-    return tryOne(0);
-  }
-
-  /* local geometry merge (no three addon → no import-map dependency) */
-  function prep(g) { return g.index ? g.toNonIndexed() : g; }
-  function paint(g, r, gr, b) { g = prep(g); g.deleteAttribute('uv'); var n = g.attributes.position.count, c = new Float32Array(n*3); for (var i = 0; i < n; i++) { c[i*3]=r; c[i*3+1]=gr; c[i*3+2]=b; } g.setAttribute('color', new THREE.BufferAttribute(c,3)); return g; }
-  function paintGrad(g, base, top) { g = prep(g); g.deleteAttribute('uv'); var p = g.attributes.position, n = p.count, c = new Float32Array(n*3), ymin=1e9, ymax=-1e9; for (var i = 0; i < n; i++) { var y = p.getY(i); if (y<ymin) ymin=y; if (y>ymax) ymax=y; } for (var j = 0; j < n; j++) { var t = (p.getY(j)-ymin)/Math.max(0.001,ymax-ymin); c[j*3]=base[0]+(top[0]-base[0])*t; c[j*3+1]=base[1]+(top[1]-base[1])*t; c[j*3+2]=base[2]+(top[2]-base[2])*t; } g.setAttribute('color', new THREE.BufferAttribute(c,3)); return g; }
-  function mergeGeos(list) { list = list.map(function (g){ return g.index ? g.toNonIndexed() : g; }); var n = 0; list.forEach(function (g){ n += g.attributes.position.count; }); var pos = new Float32Array(n*3), nor = new Float32Array(n*3), col = new Float32Array(n*3), o = 0; list.forEach(function (g){ var c = g.attributes.position.count; pos.set(g.attributes.position.array, o*3); if (g.attributes.normal) nor.set(g.attributes.normal.array, o*3); if (g.attributes.color) col.set(g.attributes.color.array, o*3); o += c; }); var g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(pos,3)); g.setAttribute('normal', new THREE.BufferAttribute(nor,3)); g.setAttribute('color', new THREE.BufferAttribute(col,3)); return g; }
-  function spruceGeo(){ var t=paint(new THREE.CylinderGeometry(0.09,0.16,0.9,6).translate(0,0.45,0),0.30,0.20,0.12); var c1=paintGrad(new THREE.ConeGeometry(0.78,1.15,7).translate(0,1.35,0),[0.02,0.46,0.58],[0.10,0.66,0.82]); var c2=paintGrad(new THREE.ConeGeometry(0.60,0.98,7).translate(0,1.98,0),[0.05,0.56,0.72],[0.15,0.76,0.92]); var c3=paintGrad(new THREE.ConeGeometry(0.42,0.82,7).translate(0,2.55,0),[0.10,0.68,0.84],[0.22,0.80,0.92]); return mergeGeos([t,c1,c2,c3]); }
-  function roundGeo(){ var t=paint(new THREE.CylinderGeometry(0.11,0.18,1.0,6).translate(0,0.5,0),0.32,0.21,0.12); var b1=paintGrad(new THREE.IcosahedronGeometry(0.82,1).translate(0,1.55,0),[0.05,0.55,0.10],[0.16,0.80,0.18]); var b2=paintGrad(new THREE.IcosahedronGeometry(0.55,1).translate(0.35,2.05,0.1),[0.10,0.68,0.16],[0.24,0.92,0.26]); return mergeGeos([t,b1,b2]); }
-  function goldenGeo(){ var t=paint(new THREE.CylinderGeometry(0.10,0.17,0.95,6).translate(0,0.47,0),0.32,0.20,0.11); var d1=paintGrad(new THREE.DodecahedronGeometry(0.78,0).translate(0,1.5,0),[0.85,0.46,0.02],[1.0,0.72,0.06]); var d2=paintGrad(new THREE.DodecahedronGeometry(0.50,0).translate(-0.2,2.1,-0.1),[0.95,0.60,0.04],[1.0,0.84,0.12]); return mergeGeos([t,d1,d2]); }
-  function oakGeo(){ var t=paint(new THREE.CylinderGeometry(0.22,0.42,2.4,7).translate(0,1.2,0),0.16,0.11,0.07); var c1=paintGrad(new THREE.IcosahedronGeometry(1.7,1).scale(1.25,0.95,1.25).translate(0,3.1,0),[0.06,0.16,0.05],[0.13,0.30,0.09]); var c2=paintGrad(new THREE.IcosahedronGeometry(1.35,1).scale(1.2,0.9,1.2).translate(0.7,3.9,0.4),[0.08,0.20,0.06],[0.16,0.36,0.12]); var c3=paintGrad(new THREE.IcosahedronGeometry(1.2,1).scale(1.15,0.9,1.15).translate(-0.6,3.8,-0.3),[0.07,0.18,0.06],[0.15,0.34,0.11]); var c4=paintGrad(new THREE.IcosahedronGeometry(1.0,1).scale(1.1,0.85,1.1).translate(0.1,4.5,0.1),[0.10,0.24,0.07],[0.19,0.42,0.14]); return mergeGeos([t,c1,c2,c3,c4]); }
-
-  function buildSpots(half) {
-    var sp = 2.4;
-    var spots = [];
-
-    for (var x = -half; x <= half; x += sp) {
-      for (var z = -half; z <= half; z += sp) {
-        var h = heightAt(x, z);
-        if (h < WL + 0.25) continue;
-
-        var hx = heightAt(x + 0.6, z) - heightAt(x - 0.6, z);
-        var hz = heightAt(x, z + 0.6) - heightAt(x, z - 0.6);
-
-        if (Math.hypot(hx, hz) / 1.2 > 0.6) continue;
-
-        spots.push({ x: x, y: h, z: z });
-      }
-    }
-
-    // IMPORTANT:
-    // Start planting near the centre first, not at the far edge of the world.
-    spots.sort(function (a, b) {
-      return Math.hypot(a.x, a.z) - Math.hypot(b.x, b.z);
-    });
-
-    return spots;
-  }
-
-  function buildScene() {
-    renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true });
-    renderer.setPixelRatio(Math.min(devicePixelRatio, 1.5));
-    renderer.setSize(innerWidth, innerHeight);
-    renderer.setClearColor(0x070809, 1);
-    scene = new THREE.Scene();
-    env = { fog: new THREE.FogExp2(0x9ab4c8, 0.006) }; scene.fog = env.fog;
-    camera = new THREE.PerspectiveCamera(48, innerWidth/innerHeight, 0.1, 900);
-    camera.position.set(0, 95, 140); camera.lookAt(0, 4, 0);
-    var skyMat = new THREE.ShaderMaterial({ side: THREE.BackSide, depthWrite: false, uniforms: { top:{value:new THREE.Color()}, bottom:{value:new THREE.Color()}, off:{value:18}, exp:{value:0.62} }, vertexShader:'varying vec3 vW; void main(){ vec4 w=modelMatrix*vec4(position,1.); vW=w.xyz; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}', fragmentShader:'uniform vec3 top,bottom; uniform float off,exp; varying vec3 vW; void main(){ float h=normalize(vW+vec3(0.,off,0.)).y; float t=pow(max(h,0.),exp); gl_FragColor=vec4(mix(bottom,top,t),1.);}' });
-    env.skyTop = skyMat.uniforms.top.value; env.skyBot = skyMat.uniforms.bottom.value;
-    scene.add(new THREE.Mesh(new THREE.SphereGeometry(420, 32, 16), skyMat));
-    env.hemi = new THREE.HemisphereLight(0x8aa0b8, 0x3a3020, 0.72); scene.add(env.hemi);
-    env.sun = new THREE.DirectionalLight(0xfff2e0, 1.15); env.sun.position.set(20,70,30); scene.add(env.sun);
-    scene.add(new THREE.AmbientLight(0xffffff, 0.12));
-    var half = 180, seg = 140, tGeo = new THREE.PlaneGeometry(half*2, half*2, seg, seg); tGeo.rotateX(-Math.PI/2);
-    var p = tGeo.attributes.position, col = new Float32Array(p.count*3);
-    var gr=[0.10,0.46,0.08], li=[0.26,0.66,0.10], mu=[0.26,0.24,0.16], ro=[0.42,0.44,0.40];
-    function mx(a,b,t){ return [a[0]+(b[0]-a[0])*t,a[1]+(b[1]-a[1])*t,a[2]+(b[2]-a[2])*t]; }
-    for (var i = 0; i < p.count; i++) { var x = p.getX(i), z = p.getZ(i), h = heightAt(x,z); p.setY(i,h); var c, j = (hash(x,z)-0.5)*0.06; if (h<WL+0.35) c=mu; else if (h<1.6) c=mx(gr,li,Math.max(0,(h+0.5)/2.1)); else if (h<3.4) c=li; else c=mx(li,ro,Math.min(1,(h-3.4)/2)); col[i*3]=c[0]+j; col[i*3+1]=c[1]+j; col[i*3+2]=c[2]+j; }
-    tGeo.setAttribute('color', new THREE.BufferAttribute(col,3)); tGeo.computeVertexNormals();
-    scene.add(new THREE.Mesh(tGeo, new THREE.MeshStandardMaterial({ vertexColors:true, roughness:1, metalness:0, flatShading:true })));
-    var water = new THREE.Mesh(new THREE.PlaneGeometry(half*2, half*2), new THREE.MeshStandardMaterial({ color:0x244a60, transparent:true, opacity:0.8, roughness:0.12, metalness:0.4 }));
-    water.rotation.x = -Math.PI/2; water.position.y = WL; scene.add(water); env.water = water;
-    treeMat = new THREE.MeshStandardMaterial({ vertexColors:true, roughness:0.82, metalness:0, flatShading:true });
-    treeMat.onBeforeCompile = function (sh) { sh.uniforms.uTime = { value:0 }; sh.vertexShader = 'uniform float uTime;\n' + sh.vertexShader.replace('#include <begin_vertex>', "#include <begin_vertex>\n float sw=max(transformed.y-0.7,0.0);\n float ph=instanceMatrix[3][0]*0.6+instanceMatrix[3][2]*0.6;\n transformed.x+=sin(uTime*1.3+ph)*sw*0.030;\n transformed.z+=cos(uTime*1.0+ph)*sw*0.024;"); treeMat.userData.shader = sh; };
-    env.geos = { physics:spruceGeo(), chemistry:roundGeo(), maths:goldenGeo(), oak:oakGeo() };
-    env.spots = buildSpots(172);
-    try {
-      var FN = 130, fp = new Float32Array(FN*3), fc = new Float32Array(FN*3); env.ffBase = [];
-      for (var k = 0; k < FN; k++) { var fx = (Math.random()-0.5)*half*1.4, fz = (Math.random()-0.5)*half*1.4, fy = Math.max(heightAt(fx,fz),WL)+0.6+Math.random()*3; env.ffBase.push({ x:fx, y:fy, z:fz, ph:Math.random()*6.28, sp:0.3+Math.random()*0.6 }); fp[k*3]=fx; fp[k*3+1]=fy; fp[k*3+2]=fz; }
-      env.ffGeo = new THREE.BufferGeometry(); env.ffGeo.setAttribute('position', new THREE.BufferAttribute(fp,3)); env.ffGeo.setAttribute('color', new THREE.BufferAttribute(fc,3));
-      env.ffMat = new THREE.PointsMaterial({ size:0.7, map:glowTex(), transparent:true, opacity:0, depthWrite:false, blending:THREE.AdditiveBlending, vertexColors:true, sizeAttenuation:true });
-      env.ff = new THREE.Points(env.ffGeo, env.ffMat); env.ff.frustumCulled = false; scene.add(env.ff);
-    } catch (e) {}
-  }
-  function glowTex() { var c = document.createElement('canvas'); c.width = c.height = 64; var g = c.getContext('2d'); var r = g.createRadialGradient(32,32,0,32,32,32); r.addColorStop(0,'rgba(255,255,255,1)'); r.addColorStop(0.3,'rgba(255,240,180,.8)'); r.addColorStop(1,'rgba(255,240,180,0)'); g.fillStyle = r; g.fillRect(0,0,64,64); var t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t; }
-
-  function placeTrees(data) {
-    if (!env || !env.geos) return;
-    (env.treeMeshes || []).forEach(function (m) { scene.remove(m); if (m.geometry) m.geometry.dispose(); });
-    env.treeMeshes = [];
-    var spots = env.spots; if (!spots || !spots.length) return;
-    var groups = { physics:[], chemistry:[], maths:[], oak:[] };
-    data.forEach(function (d, i) {
-      var oak = (d.qElo || 1200) >= 2300;
-      (groups[oak ? 'oak' : (d.subject || 'physics')]).push({
-        i:i, base:(0.55 + Math.min(1, Math.max(0, ((d.qElo||1200)-800)/2200)) * 1.1 + (hash(i,7)-0.5)*0.16) * (oak?0.85:1),
-        sy:(0.82 + hash(i,11)*0.5) * (oak?0.95:1), sxz:0.85 + hash(i,13)*0.32,
-        lx:(hash(i,17)-0.5)*0.1*(oak?0.4:1), lz:(hash(i,19)-0.5)*0.1*(oak?0.4:1), rot:hash(i,3)*6.283
-      });
-    });
-    var dummy = new THREE.Object3D();
-    Object.keys(groups).forEach(function (k) {
-      var list = groups[k]; if (!list.length) return;
-      var m = new THREE.InstancedMesh(env.geos[k], treeMat, list.length); m.frustumCulled = false;
-      list.forEach(function (t, j) {
-        var s = spots[t.i % spots.length]; var sc = t.base;
-        dummy.position.set(s.x + (hash(t.i,5)-0.5)*0.6, s.y - 0.06, s.z + (hash(t.i,6)-0.5)*0.6);
-        dummy.rotation.set(t.lx, t.rot, t.lz);
-        dummy.scale.set(t.sxz*sc, t.sy*sc, t.sxz*sc); dummy.updateMatrix();
-        m.setMatrixAt(j, dummy.matrix);
-      });
-      m.instanceMatrix.needsUpdate = true; scene.add(m); env.treeMeshes.push(m);
-    });
-  }
-  function rebuildIfNeeded(force) { var sig = bgSig(); if (force || sig !== lastSig) { lastSig = sig; if (built) placeTrees(computeBgTrees()); } }
-
-  function ensureBuilt() {
-    if (built || building) return; building = true;
-    loadThree().then(function (m) {
-      THREE = m;
-      try { buildScene(); built = true; applyTOD(realTOD()); rebuildIfNeeded(true); }
-      catch (e) { toast('Living world build failed: ' + (e && e.message || e)); enabled = false; document.body.classList.remove('forest-bg-on'); if (btn) btn.classList.remove('active'); if (canvas) canvas.style.opacity = '0'; }
-      building = false;
-    }).catch(function (e) { toast('Could not load the 3D engine (network/CDN). Grid background kept.'); enabled = false; document.body.classList.remove('forest-bg-on'); if (btn) btn.classList.remove('active'); if (canvas) canvas.style.opacity = '0'; building = false; });
-  }
-
-  function frame(t) {
-    if (!enabled || document.hidden) { raf = null; return; }
-    raf = requestAnimationFrame(frame);
-    if (t - last < FRAME) return; var dt = Math.min(0.05, (t - last)/1000 || 0); last = t; elT += dt;
-    orbit += dt * 0.06;
-    var R = 140, H = 95; camera.position.set(Math.sin(orbit)*R, H, Math.cos(orbit)*R); camera.lookAt(0, 4, 0);
-    if (t - lastTOD > 30000) { lastTOD = t; applyTOD(realTOD()); }
-    if (env.water) env.water.position.y = WL + Math.sin(elT*0.6)*0.04;
-    if (treeMat && treeMat.userData.shader) treeMat.userData.shader.uniforms.uTime.value = elT;
-    if (env && env.ffMat) { var nf = nightFactor(curTOD); env.ffMat.opacity = nf * 0.9; if (env.ffGeo && nf > 0.02) { var arr = env.ffGeo.attributes.position.array, ca = env.ffGeo.attributes.color.array; for (var i = 0; i < env.ffBase.length; i++) { var b = env.ffBase[i], tw = 0.5+0.5*Math.sin(elT*b.sp*3+b.ph), f = nf*tw; arr[i*3]=b.x+Math.sin(elT*b.sp+b.ph)*0.8; arr[i*3+1]=b.y+Math.sin(elT*b.sp*1.3+b.ph)*0.5; arr[i*3+2]=b.z+Math.cos(elT*b.sp*0.8+b.ph)*0.8; ca[i*3]=1.0*f; ca[i*3+1]=0.85*f; ca[i*3+2]=0.4*f; } env.ffGeo.attributes.position.needsUpdate = true; env.ffGeo.attributes.color.needsUpdate = true; } }
-    renderer.render(scene, camera);
-  }
-  function startLoop() { if (raf == null) { last = 0; raf = requestAnimationFrame(frame); } }
-  function stopLoop() { if (raf != null) { cancelAnimationFrame(raf); raf = null; } }
-
-  function applyOpacity() { document.documentElement.style.setProperty('--forest-bg-op', opacity); if (canvas && enabled) canvas.style.opacity = String(opacity); }
-  function setOpacity(v) { opacity = Math.max(0.1, Math.min(1, v)); applyOpacity(); try { localStorage.setItem(LS_OP, String(opacity)); } catch (e) {} }
-  function setGridFade(on) { var grid = document.querySelector('.bg-grid-overlay'); var glows = document.querySelectorAll('.ambient-glow'); if (grid) grid.style.opacity = on ? '0' : ''; for (var i = 0; i < glows.length; i++) glows[i].style.opacity = on ? '0' : ''; }
-  function setEnabled(on) {
-    enabled = !!on; try { localStorage.setItem(LS_ON, on ? '1' : '0'); } catch (e) {}
-    document.body.classList.toggle('forest-bg-on', on);
-    if (btn) btn.classList.toggle('active', on);
-    if (sw) sw.checked = on;
-    setGridFade(on);
-    if (on) { applyOpacity(); ensureBuilt(); if (built) { rebuildIfNeeded(true); applyTOD(realTOD()); } startLoop(); }
-    else { if (canvas) canvas.style.opacity = '0'; stopLoop(); }
-  }
-
-  function positionPop() { if (!btn || !pop) return; var r = btn.getBoundingClientRect(), w = pop.offsetWidth || 230, h = pop.offsetHeight || 150, left = Math.max(12, Math.min(r.left, innerWidth - w - 12)), top = r.bottom + 10; if (top + h > innerHeight - 12) top = Math.max(12, r.top - h - 10); pop.style.left = left + 'px'; pop.style.top = top + 'px'; }
-  function openPop() { if (sw) sw.checked = enabled; if (opInput) opInput.value = Math.round(opacity*100); pop.classList.add('open'); btn.setAttribute('aria-expanded', 'true'); positionPop(); }
-  function closePop() { pop.classList.remove('open'); btn.setAttribute('aria-expanded', 'false'); }
-
-  function injectToggle() {
-    if (document.getElementById('forest-bg-btn')) return;
-    var sb = document.getElementById('sidebar') || document.querySelector('.sidebar');
-    if (!sb) { setTimeout(injectToggle, 300); return; }
-    btn = el('button', { id:'forest-bg-btn', class:'forest-bg-btn', type:'button', title:'Living world background', 'aria-haspopup':'true', 'aria-expanded':'false', html:'<span class="fb-dot">🌲</span><span class="fb-lbl">World</span><span class="fb-chev">▾</span>' });
-    var themeBtn = document.getElementById('theme-btn'), logo = sb.querySelector('.logo-container');
-    if (themeBtn && themeBtn.parentNode === sb) sb.insertBefore(btn, themeBtn.nextSibling);
-    else if (logo && logo.parentNode === sb) sb.insertBefore(btn, logo.nextSibling);
-    else sb.insertBefore(btn, sb.firstChild);
-    pop = el('div', { id:'forest-bg-pop', class:'forest-bg-pop', html:'<div class="fb-pop-row"><span class="fb-pop-title">LIVING WORLD</span><label class="fb-switch"><input id="fb-sw" type="checkbox"><span class="fb-slider"></span></label></div><label class="fb-pop-l">Wallpaper opacity</label><input id="fb-op" type="range" min="10" max="100" value="50"><div class="fb-pop-note">🕒 Sky syncs to your real clock · camera orbits slowly · the forest grows with every solve AND every manual + tap · pauses when the tab is hidden.</div>' });
-    document.body.appendChild(pop);
-    sw = document.getElementById('fb-sw'); opInput = document.getElementById('fb-op');
-    btn.addEventListener('click', function (e) { e.stopPropagation(); if (pop.classList.contains('open')) closePop(); else openPop(); });
-    sw.addEventListener('change', function () { setEnabled(sw.checked); });
-    opInput.addEventListener('input', function () { setOpacity((parseInt(opInput.value, 10) || 50) / 100); });
-    document.addEventListener('pointerdown', function (e) { if (!pop.classList.contains('open')) return; if (pop.contains(e.target) || btn.contains(e.target)) return; closePop(); }, true);
-    document.addEventListener('keydown', function (e) { if (e.key === 'Escape') closePop(); });
-    addEventListener('resize', function () { if (pop.classList.contains('open')) positionPop(); if (renderer && enabled) { renderer.setSize(innerWidth, innerHeight); camera.aspect = innerWidth/innerHeight; camera.updateProjectionMatrix(); } });
-  }
-
-  /* react the instant a counter moves (manual +/- OR a real solve) */
-  function watchCounters() {
-    var pending = false;
-
-    function schedule() {
-      if (pending) return;
-      pending = true;
-
-      requestAnimationFrame(function () {
-        pending = false;
-        if (enabled && built) rebuildIfNeeded(false);
-      });
-    }
-
-    try {
-      var mo = new MutationObserver(schedule);
-      mo.observe(document.documentElement, {
-        childList: true,
-        subtree: true,
-        characterData: true
-      });
-    } catch (e) {}
-
-    setInterval(function () {
-      if (enabled && built) rebuildIfNeeded(false);
-    }, 1200);
-
-    window.addEventListener('storage', function () {
-      if (enabled && built) rebuildIfNeeded(true);
-    });
-  }
-
-  function boot() {
-    if (!document.body) { requestAnimationFrame(boot); return; }
-    try { opacity = Math.max(0.1, Math.min(1, parseFloat(localStorage.getItem(LS_OP)) || 0.5)); } catch (e) {}
-    var on = false; try { on = localStorage.getItem(LS_ON) === '1'; } catch (e) {}
-    canvas = el('canvas', { id:'forest-bg-canvas' });
-    Object.assign(canvas.style, { position:'fixed', top:'0', left:'0', width:'100%', height:'100%', zIndex:'0', pointerEvents:'none', display:'block', opacity:'0', transition:'opacity .7s ease' });
-    document.body.appendChild(canvas);
-    injectToggle();
-    watchCounters();
-    setInterval(function () { if (enabled && built) rebuildIfNeeded(false); }, 4000);   // catches bank-only drift
-    document.addEventListener('visibilitychange', function () { if (!document.hidden && enabled && built) startLoop(); });
-    if (on) setEnabled(true);
-  }
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot); else boot();
-
-  window.__forestBG = { show:function(){ setEnabled(true); }, hide:function(){ setEnabled(false); }, setOpacity:setOpacity, refresh:function(){ if (built) rebuildIfNeeded(true); } };
+'use strict';
+if (window.__forestBgInit) return; window.__forestBgInit = true;
+var LS_ON='jeemax_forest_bg',LS_OP='jeemax_forest_bg_op',LS='jeemax_forest_daily_v1';
+var CAP=6000,WL=-1.1,FRAME=1000/30;var SUBJ=['physics','chemistry','maths'];
+function toast(m){console.warn('[forest-bg]',m);try{var d=document.createElement('div');d.textContent='⚠ '+m;Object.assign(d.style,{position:'fixed',left:'50%',bottom:'14px',transform:'translateX(-50%)',zIndex:'60',background:'rgba(20,16,8,.92)',border:'1px solid rgba(255,178,36,.4)',color:'#ffd9a0',padding:'8px 14px',borderRadius:'10px',font:'12px/1.4 monospace',maxWidth:'88vw',boxShadow:'0 8px 24px rgba(0,0,0,.6)',pointerEvents:'none'});document.body.appendChild(d);setTimeout(function(){d.style.transition='opacity .5s';d.style.opacity='0';setTimeout(function(){if(d.parentNode)d.parentNode.removeChild(d);},600);},6000);}catch(_){}}
+function el(tag,a){var n=document.createElement(tag);if(a)for(var k in a){if(k==='html')n.innerHTML=a[k];else if(k==='class')n.className=a[k];else n.setAttribute(k,a[k]);}return n;}
+function hash(x,z){var n=Math.sin(x*127.1+z*311.7)*43758.5453;return n-Math.floor(n);}
+function vnoise(x,z){var xi=Math.floor(x),zi=Math.floor(z),xf=x-xi,zf=z-zi,u=xf*xf*(3-2*xf),v=zf*zf*(3-2*zf),a=hash(xi,zi),b=hash(xi+1,zi),c=hash(xi,zi+1),d=hash(xi+1,zi+1);return a*(1-u)*(1-v)+b*u*(1-v)+c*(1-u)*v+d*u*v;}
+function heightAt(x,z){var h=(vnoise(x*0.035,z*0.035)-0.5)*8+(vnoise(x*0.09,z*0.09)-0.5)*2.5+(vnoise(x*0.2,z*0.2)-0.5)*0.8;var dd=Math.hypot(x+9,z-7);h-=Math.max(0,3.4-dd*0.5);return h;}
+function realTOD(){var d=new Date();return ((d.getHours()+d.getMinutes()/60)/24)*100;}
+function nightFactor(t){var u=t/100;return Math.max(0,Math.min(1,Math.abs(u-0.5)*2));}
+function normSub(s){s=(s||'').toString().toLowerCase().trim();return (s==='math'||s==='mathematics')?'maths':(SUBJ.indexOf(s)>=0?s:'physics');}
+function qEloOf(q){return (typeof q.qElo==='number'&&q.qElo>0)?q.qElo:1200;}
+function todayKey(){return new Date().toISOString().slice(0,10);}
+function rc(id){var e=document.getElementById(id);return e?(parseInt(e.textContent,10)||0):0;}
+function loadStore(){try{var o=JSON.parse(localStorage.getItem(LS)||'{}');return (o&&typeof o==='object')?o:{};}catch(e){return {};}}
+function saveStore(o){try{localStorage.setItem(LS,JSON.stringify(o));}catch(e){}}
+function storedOf(s,dk){var c=s[dk]||{};return {physics:(+c.physics||0),chemistry:(+c.chemistry||0),maths:(+c.maths||0)};}
+function liveCounts(){var l={physics:rc('physics-count'),chemistry:rc('chemistry-count'),maths:rc('maths-count')};try{if(window.solved){l.physics=Math.max(l.physics,(+window.solved.physics||0));l.chemistry=Math.max(l.chemistry,(+window.solved.chemistry||0));l.maths=Math.max(l.maths,(+window.solved.maths||0));}}catch(e){}return l;}
+function visualToday(s){var l=liveCounts();var t=storedOf(s,todayKey());return {physics:Math.max(l.physics,t.physics),chemistry:Math.max(l.chemistry,t.chemistry),maths:Math.max(l.maths,t.maths)};}
+function liveTotal(s){var c=visualToday(s);return c.physics+c.chemistry+c.maths;}
+function getBank(){try{if(window.AppState&&Array.isArray(window.AppState.questionBank))return window.AppState.questionBank;if(Array.isArray(window.questionBank))return window.questionBank;}catch(e){}return [];}
+function solvedBank(){var qb=getBank(),o=[];for(var i=0;i<qb.length;i++){var q=qb[i];if(q&&q.status==='solved')o.push(q);}return o;}
+function computeBgTrees(){
+  var trees=[];var solved=solvedBank();var byDate={};
+  for(var i=0;i<solved.length;i++){var q=solved[i];var subj=normSub(q.subject);var elo=qEloOf(q);var dk=(q.lastReviewedAt||'').slice(0,10);trees.push({subject:subj,qElo:elo});if(dk){if(!byDate[dk])byDate[dk]={physics:0,chemistry:0,maths:0};byDate[dk][subj]++;}}
+  var store=loadStore();var today=todayKey();store[today]=visualToday(store);
+  var keys=Object.keys(store);
+  for(var ki=0;ki<keys.length;ki++){var dk=keys[ki];var counts=storedOf(store,dk);var sd=byDate[dk]||{physics:0,chemistry:0,maths:0};for(var s=0;s<SUBJ.length;s++){var subj=SUBJ[s];var extra=Math.max(0,(counts[subj]||0)-(sd[subj]||0));for(var n=0;n<extra;n++)trees.push({subject:subj,qElo:1000+Math.floor(hash(dk.length+n*7+3,subj.length*3+n*11+1)*800)});}}
+  saveStore(store);
+  if(trees.length>CAP){var step=trees.length/CAP,o=[];for(var j=0;j<CAP;j++)o.push(trees[Math.floor(j*step)]);trees=o;}
+  return trees;
+}
+function bgSig(){var ss='';try{ss=localStorage.getItem(LS)||'';}catch(e){}return getBank().length+'|'+solvedBank().length+'|'+liveTotal(loadStore())+'|'+ss;}
+var THREE=null,renderer,scene,camera,env=null,treeMat;
+var canvas,btn,pop,sw,opInput;
+var enabled=false,building=false,built=false,opacity=0.5,lastSig='';
+var raf=null,last=0,elT=0,orbit=0,curTOD=50,lastTOD=0;
+var TOD=[{t:0,top:0x0a0e1c,bot:0x141a2a,sun:0x3a4a6a,sunI:0.15,hemi:0x2a3040,fog:0x0e1220},{t:22,top:0x2a3a5e,bot:0xe8956a,sun:0xffb27a,sunI:0.70,hemi:0x5a5a6a,fog:0x3a3040},{t:50,top:0x4a7ec0,bot:0xc4dcec,sun:0xfff2e0,sunI:1.15,hemi:0x8aa0b8,fog:0x9ab4c8},{t:78,top:0x3a2a52,bot:0xe07a44,sun:0xff8a4a,sunI:0.75,hemi:0x6a5060,fog:0x4a3444},{t:100,top:0x0a0e1c,bot:0x141a2a,sun:0x3a4a6a,sunI:0.15,hemi:0x2a3040,fog:0x0e1220}];
+function applyTOD(v){if(!env)return;curTOD=v;var a=TOD[0],b=TOD[TOD.length-1];for(var i=0;i<TOD.length-1;i++)if(v>=TOD[i].t&&v<=TOD[i+1].t){a=TOD[i];b=TOD[i+1];break;}var f=(v-a.t)/Math.max(0.0001,b.t-a.t);function L(x,y){return new THREE.Color(x).lerp(new THREE.Color(y),f);}env.skyTop.copy(L(a.top,b.top));env.skyBot.copy(L(a.bot,b.bot));env.sun.color.copy(L(a.sun,b.sun));env.sun.intensity=a.sunI+(b.sunI-a.sunI)*f;env.sun.position.set((v/100-0.5)*160,70,30);env.hemi.color.copy(L(a.hemi,b.hemi));env.hemi.groundColor.copy(env.skyBot).multiplyScalar(0.5);env.fog.color.copy(L(a.fog,b.fog));}
+function loadThree(){var urls=['https://esm.sh/three@0.160.0','https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js','https://unpkg.com/three@0.160.0/build/three.module.js'];function tryOne(i){return new Promise(function(res,rej){if(i>=urls.length)return rej(new Error('all CDNs failed'));import(urls[i]).then(function(m){res(m);}).catch(function(){tryOne(i+1).then(res,rej);});});}return tryOne(0);}
+function prep(g){return g.index?g.toNonIndexed():g;}
+function paint(g,r,gr,b){g=prep(g);g.deleteAttribute('uv');var n=g.attributes.position.count,c=new Float32Array(n*3);for(var i=0;i<n;i++){c[i*3]=r;c[i*3+1]=gr;c[i*3+2]=b;}g.setAttribute('color',new THREE.BufferAttribute(c,3));return g;}
+function paintGrad(g,base,top){g=prep(g);g.deleteAttribute('uv');var p=g.attributes.position,n=p.count,c=new Float32Array(n*3),ymin=1e9,ymax=-1e9;for(var i=0;i<n;i++){var y=p.getY(i);if(y<ymin)ymin=y;if(y>ymax)ymax=y;}for(var j=0;j<n;j++){var t=(p.getY(j)-ymin)/Math.max(0.001,ymax-ymin);c[j*3]=base[0]+(top[0]-base[0])*t;c[j*3+1]=base[1]+(top[1]-base[1])*t;c[j*3+2]=base[2]+(top[2]-base[2])*t;}g.setAttribute('color',new THREE.BufferAttribute(c,3));return g;}
+function mergeGeos(list){list=list.map(function(g){return g.index?g.toNonIndexed():g;});var n=0;list.forEach(function(g){n+=g.attributes.position.count;});var pos=new Float32Array(n*3),nor=new Float32Array(n*3),col=new Float32Array(n*3),o=0;list.forEach(function(g){var c=g.attributes.position.count;pos.set(g.attributes.position.array,o*3);if(g.attributes.normal)nor.set(g.attributes.normal.array,o*3);if(g.attributes.color)col.set(g.attributes.color.array,o*3);o+=c;});var g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.BufferAttribute(pos,3));g.setAttribute('normal',new THREE.BufferAttribute(nor,3));g.setAttribute('color',new THREE.BufferAttribute(col,3));return g;}
+function spruceGeo(){var t=paint(new THREE.CylinderGeometry(0.09,0.16,0.9,6).translate(0,0.45,0),0.30,0.20,0.12);var c1=paintGrad(new THREE.ConeGeometry(0.78,1.15,7).translate(0,1.35,0),[0.02,0.46,0.58],[0.10,0.66,0.82]);var c2=paintGrad(new THREE.ConeGeometry(0.60,0.98,7).translate(0,1.98,0),[0.05,0.56,0.72],[0.15,0.76,0.92]);var c3=paintGrad(new THREE.ConeGeometry(0.42,0.82,7).translate(0,2.55,0),[0.10,0.68,0.84],[0.22,0.80,0.92]);return mergeGeos([t,c1,c2,c3]);}
+function roundGeo(){var t=paint(new THREE.CylinderGeometry(0.11,0.18,1.0,6).translate(0,0.5,0),0.32,0.21,0.12);var b1=paintGrad(new THREE.IcosahedronGeometry(0.82,1).translate(0,1.55,0),[0.05,0.55,0.10],[0.16,0.80,0.18]);var b2=paintGrad(new THREE.IcosahedronGeometry(0.55,1).translate(0.35,2.05,0.1),[0.10,0.68,0.16],[0.24,0.92,0.26]);return mergeGeos([t,b1,b2]);}
+function goldenGeo(){var t=paint(new THREE.CylinderGeometry(0.10,0.17,0.95,6).translate(0,0.47,0),0.32,0.20,0.11);var d1=paintGrad(new THREE.DodecahedronGeometry(0.78,0).translate(0,1.5,0),[0.85,0.46,0.02],[1.0,0.72,0.06]);var d2=paintGrad(new THREE.DodecahedronGeometry(0.50,0).translate(-0.2,2.1,-0.1),[0.95,0.60,0.04],[1.0,0.84,0.12]);return mergeGeos([t,d1,d2]);}
+function oakGeo(){var t=paint(new THREE.CylinderGeometry(0.22,0.42,2.4,7).translate(0,1.2,0),0.16,0.11,0.07);var c1=paintGrad(new THREE.IcosahedronGeometry(1.7,1).scale(1.25,0.95,1.25).translate(0,3.1,0),[0.06,0.16,0.05],[0.13,0.30,0.09]);var c2=paintGrad(new THREE.IcosahedronGeometry(1.35,1).scale(1.2,0.9,1.2).translate(0.7,3.9,0.4),[0.08,0.20,0.06],[0.16,0.36,0.12]);var c3=paintGrad(new THREE.IcosahedronGeometry(1.2,1).scale(1.15,0.9,1.15).translate(-0.6,3.8,-0.3),[0.07,0.18,0.06],[0.15,0.34,0.11]);var c4=paintGrad(new THREE.IcosahedronGeometry(1.0,1).scale(1.1,0.85,1.1).translate(0.1,4.5,0.1),[0.10,0.24,0.07],[0.19,0.42,0.14]);return mergeGeos([t,c1,c2,c3,c4]);}
+function buildSpots(half){var sp=2.4,spots=[];for(var x=-half;x<=half;x+=sp)for(var z=-half;z<=half;z+=sp){var h=heightAt(x,z);if(h<WL+0.25)continue;var hx=heightAt(x+0.6,z)-heightAt(x-0.6,z),hz=heightAt(x,z+0.6)-heightAt(x,z-0.6);if(Math.hypot(hx,hz)/1.2>0.6)continue;spots.push({x:x,y:h,z:z});}spots.sort(function(a,b){return Math.hypot(a.x,a.z)-Math.hypot(b.x,b.z);});return spots;}
+function glowTex(){var c=document.createElement('canvas');c.width=c.height=64;var g=c.getContext('2d');var r=g.createRadialGradient(32,32,0,32,32,32);r.addColorStop(0,'rgba(255,255,255,1)');r.addColorStop(0.3,'rgba(255,240,180,.8)');r.addColorStop(1,'rgba(255,240,180,0)');g.fillStyle=r;g.fillRect(0,0,64,64);var t=new THREE.CanvasTexture(c);t.colorSpace=THREE.SRGBColorSpace;return t;}
+function buildScene(){
+  renderer=new THREE.WebGLRenderer({canvas:canvas,antialias:true});renderer.setPixelRatio(Math.min(devicePixelRatio,1.5));renderer.setSize(innerWidth,innerHeight);renderer.setClearColor(0x070809,1);
+  scene=new THREE.Scene();env={fog:new THREE.FogExp2(0x9ab4c8,0.006)};scene.fog=env.fog;
+  camera=new THREE.PerspectiveCamera(48,innerWidth/innerHeight,0.1,900);camera.position.set(0,95,140);camera.lookAt(0,4,0);
+  var skyMat=new THREE.ShaderMaterial({side:THREE.BackSide,depthWrite:false,uniforms:{top:{value:new THREE.Color()},bottom:{value:new THREE.Color()},off:{value:18},exp:{value:0.62}},vertexShader:'varying vec3 vW; void main(){ vec4 w=modelMatrix*vec4(position,1.); vW=w.xyz; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}',fragmentShader:'uniform vec3 top,bottom; uniform float off,exp; varying vec3 vW; void main(){ float h=normalize(vW+vec3(0.,off,0.)).y; float t=pow(max(h,0.),exp); gl_FragColor=vec4(mix(bottom,top,t),1.);}' });
+  env.skyTop=skyMat.uniforms.top.value;env.skyBot=skyMat.uniforms.bottom.value;scene.add(new THREE.Mesh(new THREE.SphereGeometry(420,32,16),skyMat));
+  env.hemi=new THREE.HemisphereLight(0x8aa0b8,0x3a3020,0.72);scene.add(env.hemi);env.sun=new THREE.DirectionalLight(0xfff2e0,1.15);env.sun.position.set(20,70,30);scene.add(env.sun);scene.add(new THREE.AmbientLight(0xffffff,0.12));
+  var half=180,seg=140,tGeo=new THREE.PlaneGeometry(half*2,half*2,seg,seg);tGeo.rotateX(-Math.PI/2);
+  var p=tGeo.attributes.position,col=new Float32Array(p.count*3);var gr=[0.10,0.46,0.08],li=[0.26,0.66,0.10],mu=[0.26,0.24,0.16],ro=[0.42,0.44,0.40];function mx(a,b,t){return [a[0]+(b[0]-a[0])*t,a[1]+(b[1]-a[1])*t,a[2]+(b[2]-a[2])*t];}
+  for(var i=0;i<p.count;i++){var x=p.getX(i),z=p.getZ(i),h=heightAt(x,z);p.setY(i,h);var c,j=(hash(x,z)-0.5)*0.06;if(h<WL+0.35)c=mu;else if(h<1.6)c=mx(gr,li,Math.max(0,(h+0.5)/2.1));else if(h<3.4)c=li;else c=mx(li,ro,Math.min(1,(h-3.4)/2));col[i*3]=c[0]+j;col[i*3+1]=c[1]+j;col[i*3+2]=c[2]+j;}
+  tGeo.setAttribute('color',new THREE.BufferAttribute(col,3));tGeo.computeVertexNormals();scene.add(new THREE.Mesh(tGeo,new THREE.MeshStandardMaterial({vertexColors:true,roughness:1,metalness:0,flatShading:true})));
+  var water=new THREE.Mesh(new THREE.PlaneGeometry(half*2,half*2),new THREE.MeshStandardMaterial({color:0x244a60,transparent:true,opacity:0.8,roughness:0.12,metalness:0.4}));water.rotation.x=-Math.PI/2;water.position.y=WL;scene.add(water);env.water=water;
+  treeMat=new THREE.MeshStandardMaterial({vertexColors:true,roughness:0.82,metalness:0,flatShading:true});treeMat.onBeforeCompile=function(sh){sh.uniforms.uTime={value:0};sh.vertexShader='uniform float uTime;\n'+sh.vertexShader.replace('#include <begin_vertex>',"#include <begin_vertex>\n float sw=max(transformed.y-0.7,0.0);\n float ph=instanceMatrix[3][0]*0.6+instanceMatrix[3][2]*0.6;\n transformed.x+=sin(uTime*1.3+ph)*sw*0.030;\n transformed.z+=cos(uTime*1.0+ph)*sw*0.024;");treeMat.userData.shader=sh;};
+  env.geos={physics:spruceGeo(),chemistry:roundGeo(),maths:goldenGeo(),oak:oakGeo()};env.spots=buildSpots(172);
+  try{var FN=130,fp=new Float32Array(FN*3),fc=new Float32Array(FN*3);env.ffBase=[];for(var k=0;k<FN;k++){var fx=(Math.random()-0.5)*half*1.4,fz=(Math.random()-0.5)*half*1.4,fy=Math.max(heightAt(fx,fz),WL)+0.6+Math.random()*3;env.ffBase.push({x:fx,y:fy,z:fz,ph:Math.random()*6.28,sp:0.3+Math.random()*0.6});fp[k*3]=fx;fp[k*3+1]=fy;fp[k*3+2]=fz;}env.ffGeo=new THREE.BufferGeometry();env.ffGeo.setAttribute('position',new THREE.BufferAttribute(fp,3));env.ffGeo.setAttribute('color',new THREE.BufferAttribute(fc,3));env.ffMat=new THREE.PointsMaterial({size:0.7,map:glowTex(),transparent:true,opacity:0,depthWrite:false,blending:THREE.AdditiveBlending,vertexColors:true,sizeAttenuation:true});env.ff=new THREE.Points(env.ffGeo,env.ffMat);env.ff.frustumCulled=false;scene.add(env.ff);}catch(e){}
+}
+function placeTrees(data){if(!env||!env.geos)return;(env.treeMeshes||[]).forEach(function(m){scene.remove(m);if(m.geometry)m.geometry.dispose();});env.treeMeshes=[];var spots=env.spots;if(!spots||!spots.length)return;var groups={physics:[],chemistry:[],maths:[],oak:[]};data.forEach(function(d,i){var oak=(d.qElo||1200)>=2300;(groups[oak?'oak':(d.subject||'physics')]).push({i:i,base:(0.55+Math.min(1,Math.max(0,((d.qElo||1200)-800)/2200))*1.1+(hash(i,7)-0.5)*0.16)*(oak?0.85:1),sy:(0.82+hash(i,11)*0.5)*(oak?0.95:1),sxz:0.85+hash(i,13)*0.32,lx:(hash(i,17)-0.5)*0.1*(oak?0.4:1),lz:(hash(i,19)-0.5)*0.1*(oak?0.4:1),rot:hash(i,3)*6.283});});var dummy=new THREE.Object3D();Object.keys(groups).forEach(function(k){var list=groups[k];if(!list.length)return;var m=new THREE.InstancedMesh(env.geos[k],treeMat,list.length);m.frustumCulled=false;list.forEach(function(t,j){var s=spots[t.i%spots.length];var sc=t.base;dummy.position.set(s.x+(hash(t.i,5)-0.5)*0.6,s.y-0.06,s.z+(hash(t.i,6)-0.5)*0.6);dummy.rotation.set(t.lx,t.rot,t.lz);dummy.scale.set(t.sxz*sc,t.sy*sc,t.sxz*sc);dummy.updateMatrix();m.setMatrixAt(j,dummy.matrix);});m.instanceMatrix.needsUpdate=true;scene.add(m);env.treeMeshes.push(m);});}
+function rebuildIfNeeded(force){var sig=bgSig();if(force||sig!==lastSig){lastSig=sig;if(built)placeTrees(computeBgTrees());}}
+function ensureBuilt(){if(built||building)return;building=true;loadThree().then(function(m){THREE=m;try{buildScene();built=true;applyTOD(realTOD());rebuildIfNeeded(true);}catch(e){toast('Living world build failed: '+(e&&e.message||e));enabled=false;document.body.classList.remove('forest-bg-on');if(btn)btn.classList.remove('active');if(canvas)canvas.style.opacity='0';}building=false;}).catch(function(){toast('Could not load the 3D engine. Grid background kept.');enabled=false;document.body.classList.remove('forest-bg-on');if(btn)btn.classList.remove('active');if(canvas)canvas.style.opacity='0';building=false;});}
+function frame(t){if(!enabled||document.hidden){raf=null;return;}raf=requestAnimationFrame(frame);if(t-last<FRAME)return;var dt=Math.min(0.05,(t-last)/1000||0);last=t;elT+=dt;orbit+=dt*0.06;var R=140,H=95;camera.position.set(Math.sin(orbit)*R,H,Math.cos(orbit)*R);camera.lookAt(0,4,0);if(t-lastTOD>30000){lastTOD=t;applyTOD(realTOD());}if(env.water)env.water.position.y=WL+Math.sin(elT*0.6)*0.04;if(treeMat&&treeMat.userData.shader)treeMat.userData.shader.uniforms.uTime.value=elT;if(env&&env.ffMat){var nf=nightFactor(curTOD);env.ffMat.opacity=nf*0.9;if(env.ffGeo&&nf>0.02){var arr=env.ffGeo.attributes.position.array,ca=env.ffGeo.attributes.color.array;for(var i=0;i<env.ffBase.length;i++){var b=env.ffBase[i],tw=0.5+0.5*Math.sin(elT*b.sp*3+b.ph),f=nf*tw;arr[i*3]=b.x+Math.sin(elT*b.sp+b.ph)*0.8;arr[i*3+1]=b.y+Math.sin(elT*b.sp*1.3+b.ph)*0.5;arr[i*3+2]=b.z+Math.cos(elT*b.sp*0.8+b.ph)*0.8;ca[i*3]=1.0*f;ca[i*3+1]=0.85*f;ca[i*3+2]=0.4*f;}env.ffGeo.attributes.position.needsUpdate=true;env.ffGeo.attributes.color.needsUpdate=true;}}renderer.render(scene,camera);}
+function startLoop(){if(raf==null){last=0;raf=requestAnimationFrame(frame);}}
+function stopLoop(){if(raf!=null){cancelAnimationFrame(raf);raf=null;}}
+function applyOpacity(){document.documentElement.style.setProperty('--forest-bg-op',opacity);if(canvas&&enabled)canvas.style.opacity=String(opacity);}
+function setOpacity(v){opacity=Math.max(0.1,Math.min(1,v));applyOpacity();try{localStorage.setItem(LS_OP,String(opacity));}catch(e){}}
+function setGridFade(on){var grid=document.querySelector('.bg-grid-overlay');var glows=document.querySelectorAll('.ambient-glow');if(grid)grid.style.opacity=on?'0':'';for(var i=0;i<glows.length;i++)glows[i].style.opacity=on?'0':'';}
+function setEnabled(on){enabled=!!on;try{localStorage.setItem(LS_ON,on?'1':'0');}catch(e){}document.body.classList.toggle('forest-bg-on',on);if(btn)btn.classList.toggle('active',on);if(sw)sw.checked=on;setGridFade(on);if(on){applyOpacity();ensureBuilt();if(built){rebuildIfNeeded(true);applyTOD(realTOD());}startLoop();}else{if(canvas)canvas.style.opacity='0';stopLoop();}}
+function positionPop(){if(!btn||!pop)return;var r=btn.getBoundingClientRect(),w=pop.offsetWidth||230,h=pop.offsetHeight||150,left=Math.max(12,Math.min(r.left,innerWidth-w-12)),top=r.bottom+10;if(top+h>innerHeight-12)top=Math.max(12,r.top-h-10);pop.style.left=left+'px';pop.style.top=top+'px';}
+function openPop(){if(sw)sw.checked=enabled;if(opInput)opInput.value=Math.round(opacity*100);pop.classList.add('open');btn.setAttribute('aria-expanded','true');positionPop();}
+function closePop(){pop.classList.remove('open');btn.setAttribute('aria-expanded','false');}
+function injectToggle(){if(document.getElementById('forest-bg-btn'))return;var sb=document.getElementById('sidebar')||document.querySelector('.sidebar');if(!sb){setTimeout(injectToggle,300);return;}btn=el('button',{id:'forest-bg-btn',class:'forest-bg-btn',type:'button',title:'Living world background','aria-haspopup':'true','aria-expanded':'false',html:'<span class="fb-dot">🌲</span><span class="fb-lbl">World</span><span class="fb-chev">▾</span>'});var themeBtn=document.getElementById('theme-btn'),logo=sb.querySelector('.logo-container');if(themeBtn&&themeBtn.parentNode===sb)sb.insertBefore(btn,themeBtn.nextSibling);else if(logo&&logo.parentNode===sb)sb.insertBefore(btn,logo.nextSibling);else sb.insertBefore(btn,sb.firstChild);pop=el('div',{id:'forest-bg-pop',class:'forest-bg-pop',html:'<div class="fb-pop-row"><span class="fb-pop-title">LIVING WORLD</span><label class="fb-switch"><input id="fb-sw" type="checkbox"><span class="fb-slider"></span></label></div><label class="fb-pop-l">Wallpaper opacity</label><input id="fb-op" type="range" min="10" max="100" value="50"><div class="fb-pop-note">🕒 Sky syncs to your real clock · camera orbits slowly · the forest grows with every solve AND every manual + tap · pauses when the tab is hidden.</div>'});document.body.appendChild(pop);sw=document.getElementById('fb-sw');opInput=document.getElementById('fb-op');btn.addEventListener('click',function(e){e.stopPropagation();if(pop.classList.contains('open'))closePop();else openPop();});sw.addEventListener('change',function(){setEnabled(sw.checked);});opInput.addEventListener('input',function(){setOpacity((parseInt(opInput.value,10)||50)/100);});document.addEventListener('pointerdown',function(e){if(!pop.classList.contains('open'))return;if(pop.contains(e.target)||btn.contains(e.target))return;closePop();},true);document.addEventListener('keydown',function(e){if(e.key==='Escape')closePop();});addEventListener('resize',function(){if(pop.classList.contains('open'))positionPop();if(renderer&&enabled){renderer.setSize(innerWidth,innerHeight);camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();}});}
+function watchCounters(){var pending=false;function schedule(){if(pending)return;pending=true;requestAnimationFrame(function(){pending=false;if(enabled&&built)rebuildIfNeeded(false);});}try{var mo=new MutationObserver(schedule);mo.observe(document.documentElement,{childList:true,subtree:true,characterData:true});}catch(e){}setInterval(function(){if(enabled&&built)rebuildIfNeeded(false);},1500);window.addEventListener('storage',function(){if(enabled&&built)rebuildIfNeeded(true);});}
+function boot(){if(!document.body){requestAnimationFrame(boot);return;}try{opacity=Math.max(0.1,Math.min(1,parseFloat(localStorage.getItem(LS_OP))||0.5));}catch(e){}var on=false;try{on=localStorage.getItem(LS_ON)==='1';}catch(e){}canvas=el('canvas',{id:'forest-bg-canvas'});Object.assign(canvas.style,{position:'fixed',top:'0',left:'0',width:'100%',height:'100%',zIndex:'0',pointerEvents:'none',display:'block',opacity:'0',transition:'opacity .7s ease'});document.body.appendChild(canvas);injectToggle();watchCounters();document.addEventListener('visibilitychange',function(){if(!document.hidden&&enabled&&built)startLoop();});if(on)setEnabled(true);}
+if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot);else boot();
+window.__forestBG={show:function(){setEnabled(true);},hide:function(){setEnabled(false);},setOpacity:setOpacity,refresh:function(){if(built)rebuildIfNeeded(true);}};
 })();
