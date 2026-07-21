@@ -4350,3 +4350,165 @@ body.bento-dragging #view-dashboard .dash-card.dash-card-tracker {
    ════════════════════════════════════════════════════════════════════════ */
 .nav-ck-loop,
 .sidebar.collapsed .nav-ck-loop { display: none !important; }
+
+/* ════════════════════════════════════════════════════════════════════════
+   TOP COMMAND BAR — converts the left sidebar into a glass top bar.
+   APPEND-ONLY override block. Reversible: delete this entire section.
+   No JS/DOM changes — toggleSidebar()'s .collapsed class still works.
+   ════════════════════════════════════════════════════════════════════════ */
+:root {
+  --topbar-h: 72px;
+  --topbar-h-collapsed: 54px;
+}
+
+/* ── Shell: stack vertically, let main content own the scroll ─────────── */
+.app-container { flex-direction: column; }
+.main-content {
+  height: auto !important;
+  flex: 1 1 auto !important;
+  min-height: 0 !important;              /* critical: lets the scroller shrink */
+}
+
+/* ── The glass bar ─────────────────────────────────────────────────────── */
+#sidebar, .sidebar {
+  width: 100% !important;
+  height: var(--topbar-h) !important;
+  flex: 0 0 auto !important;
+  flex-direction: row !important;
+  align-items: center !important;
+  gap: 10px;
+  padding: 0 clamp(12px, 2vw, 26px) !important;
+  border-right: none !important;
+  background: linear-gradient(180deg, rgba(17,20,30,0.62), rgba(9,11,17,0.48)) !important;
+  -webkit-backdrop-filter: blur(26px) saturate(170%);
+  backdrop-filter: blur(26px) saturate(170%);
+  box-shadow: 0 14px 44px -20px rgba(0,0,0,0.8), inset 0 1px 0 rgba(255,255,255,0.055) !important;
+  overflow: visible !important;          /* lets the hairline + glows escape */
+  position: relative;
+  z-index: 100;
+  contain: layout style;                 /* isolate layout/paint from scroll */
+  transition: height 0.32s cubic-bezier(0.25,1,0.5,1) !important;
+}
+/* aurora gradient hairline under the glass */
+#sidebar::after, .sidebar::after {
+  content: '';
+  position: absolute; left: 0; right: 0; bottom: -1px; height: 1px;
+  pointer-events: none; opacity: 0.55;
+  background: linear-gradient(90deg, transparent,
+    rgba(255,178,36,0.5) 18%, rgba(61,220,255,0.45) 50%,
+    rgba(167,139,250,0.45) 82%, transparent);
+}
+/* opaque fallback where backdrop-filter is unsupported */
+@supports not ((backdrop-filter: blur(4px)) or (-webkit-backdrop-filter: blur(4px))) {
+  #sidebar, .sidebar { background: rgba(12,14,21,0.97) !important; }
+}
+
+/* ── Logo ──────────────────────────────────────────────────────────────── */
+#sidebar .logo-container { margin: 0 8px 0 0 !important; padding: 0 6px !important; flex: 0 0 auto; }
+#sidebar .logo-text { font-size: 19px !important; }
+#sidebar .logo-icon-alt { position: static !important; display: none; }
+#sidebar.collapsed .logo-text { display: none; }
+#sidebar.collapsed .logo-icon-alt { display: block; opacity: 1; }
+
+/* ── Nav rail — centered horizontal pill cluster ───────────────────────── */
+#sidebar .nav-menu {
+  flex: 1 1 auto !important;
+  flex-direction: row !important;
+  align-items: center;
+  justify-content: center;
+  gap: 5px !important;
+  margin: 0 6px;
+  min-width: 0;
+  overflow-x: auto; overflow-y: hidden;
+  scrollbar-width: none;                 /* invisible scroll on overflow */
+}
+#sidebar .nav-menu::-webkit-scrollbar { display: none; }
+#sidebar .nav-item {
+  padding: 10px 15px !important;
+  border-radius: 12px !important;
+  white-space: nowrap;
+  flex: 0 0 auto;
+  transition: background .16s ease, box-shadow .16s ease, color .16s ease, transform .16s ease !important;
+}
+#sidebar .nav-item .icon { margin-right: 8px !important; }
+#sidebar .nav-item:hover {
+  transform: translateY(-1px) !important;
+  background: rgba(255,255,255,0.055) !important;
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,0.08);
+}
+#sidebar .nav-item.active {
+  background: linear-gradient(180deg, rgba(255,178,36,0.17), rgba(255,178,36,0.05)) !important;
+  box-shadow: inset 0 0 0 1px rgba(255,178,36,0.3), 0 6px 20px -8px rgba(255,178,36,0.5) !important;
+}
+/* active marker: vertical bar → glowing underline */
+#sidebar .nav-item.active::before {
+  top: auto !important; bottom: 4px !important;
+  left: 24% !important; right: 24% !important;
+  width: auto !important; height: 2.5px !important;
+  background: linear-gradient(90deg, var(--furnace), var(--telemetry)) !important;
+  box-shadow: 0 0 12px rgba(255,178,36,0.75) !important;
+}
+
+/* ── Profile chip — single-row glass pill (PFP + name + MMR inline) ────── */
+#sidebar .user-profile {
+  margin: 0 !important; padding: 6px 10px !important;
+  flex: 0 0 auto !important; flex-wrap: nowrap !important; gap: 9px !important;
+  width: auto !important; height: auto !important;
+  border-radius: 14px !important;
+  background: rgba(255,255,255,0.045) !important;
+  border: 1px solid rgba(255,255,255,0.09) !important;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.05) !important;
+}
+#sidebar .global-mmr-row {
+  flex: 0 0 auto !important;             /* inline chip, no second line */
+  margin: 0 !important; padding: 4px 9px !important;
+  animation: none !important;            /* kill the infinite pulse loop */
+}
+#sidebar .nav-ck-ladder { display: none !important; }  /* vertical mini-map can't live in a 72px bar */
+
+/* ── Collapse control — direction-correct glyphs (JS text kept, hidden) ── */
+#sidebar .collapse-btn {
+  margin: 0 !important; flex: 0 0 auto;
+  padding: 9px 12px !important;
+  font-size: 0 !important;               /* hides '→'/'Shrink' set by app.js */
+}
+#sidebar .collapse-btn::after { content: '▲'; font-size: 11px; letter-spacing: 1px; }
+#sidebar.collapsed .collapse-btn::after { content: '▼'; }
+
+/* ── Collapsed state — slim icon rail ──────────────────────────────────── */
+#sidebar.collapsed { height: var(--topbar-h-collapsed) !important; }
+#sidebar.collapsed .nav-item { padding: 9px 12px !important; }
+#sidebar.collapsed .nav-item .icon { margin-right: 0 !important; }
+#sidebar.collapsed .user-profile {
+  width: 42px !important; height: 42px !important;
+  padding: 4px !important; border-radius: 12px !important;
+  justify-content: center !important; margin: 0 !important;
+}
+
+/* ── Floating HUDs: dock below the bar instead of overlapping it ───────── */
+.pomo-mini-widget { top: calc(var(--topbar-h) + 14px) !important; }
+#scratchpad-root  { top: calc(var(--topbar-h) + 12px) !important; }
+
+/* ── Responsive ────────────────────────────────────────────────────────── */
+@media (max-width: 1080px) {
+  #sidebar .username-txt { display: none; }
+  #sidebar .nav-item { padding: 10px 11px !important; }
+}
+@media (max-width: 860px) {
+  #sidebar .nav-item .text-label { display: none; }   /* icon-only nav */
+  #sidebar .nav-item .icon { margin-right: 0 !important; }
+  #sidebar .global-mmr-row { display: none !important; }
+  #sidebar .nav-menu { justify-content: flex-start !important; }
+}
+@media (max-width: 560px) {
+  :root { --topbar-h: 62px; }
+  #sidebar .logo-text { display: none; }
+  #sidebar .logo-icon-alt { display: block; opacity: 1; }
+  #sidebar, .sidebar { padding: 0 10px !important; gap: 6px; }
+  #sidebar .user-profile { padding: 3px !important; }
+}
+
+/* ── Motion safety ─────────────────────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  #sidebar, .sidebar, #sidebar .nav-item { transition: none !important; }
+}
