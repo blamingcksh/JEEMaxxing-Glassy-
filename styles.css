@@ -5382,3 +5382,73 @@ body.forest-bg-on .ambient-glow { opacity: 0; transition: opacity .7s ease; }
 /* hide the original momentum content ONLY while the island is mounted,
    without deleting a single node (so a failure restores it cleanly) */
 #view-dashboard .dash-card-momentum.island-active .fi-orig { display: none !important; }
+/* ════════════════════════════════════════════════════════════════════════
+   LIVING WORLD → FULL-DASHBOARD GLASS  +  DAILY-ISLAND LAYOUT (zoom).
+   Append-only + reversible: delete this block. The glass rules are gated
+   on body.forest-bg-on so the default (grid) look is untouched; the island
+   layout rules are ungated (they only style the island card's own nodes).
+   Specificity (body.forest-bg-on #view-dashboard …) + !important beats the
+   premium-pass !important rules, so the hero card's opaque conic FILL is
+   finally swapped for a see-through one while KEEPING its animated edge.
+   ════════════════════════════════════════════════════════════════════════ */
+
+/* ── 1. Every card = the same frosted glass the bounty/decay cards use ── */
+body.forest-bg-on #view-dashboard .dash-card {
+  background: var(--aes-glass, linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.022))) !important;
+  -webkit-backdrop-filter: blur(16px) saturate(135%);
+  backdrop-filter: blur(16px) saturate(135%);
+  border: 1px solid rgba(255,255,255,.12) !important;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.10), 0 20px 46px -26px rgba(0,0,0,.75) !important;
+}
+/* ── 2. The hero tracker: see-through fill, but keep the spinning edge ── */
+body.forest-bg-on #view-dashboard .dash-card-tracker {
+  background:
+    var(--aes-glass, linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.022))) padding-box,
+    conic-gradient(from var(--aes-angle, 0deg),
+      rgba(255,178,36,.45), rgba(61,220,255,.35),
+      rgba(167,139,250,.35), rgba(255,178,36,.45)) border-box !important;
+  -webkit-backdrop-filter: blur(16px) saturate(135%);
+  backdrop-filter: blur(16px) saturate(135%);
+}
+/* ── 3. Nested tiles: a touch lighter so they layer as glass-on-glass ─── */
+body.forest-bg-on #view-dashboard .compact-subject-card,
+body.forest-bg-on #view-dashboard .erm-subject-row,
+body.forest-bg-on #view-dashboard .erm-sparkline-col,
+body.forest-bg-on #view-dashboard .variance-card {
+  background: linear-gradient(180deg, rgba(255,255,255,.05), rgba(255,255,255,.016)) !important;
+  -webkit-backdrop-filter: blur(10px) saturate(130%);
+  backdrop-filter: blur(10px) saturate(130%);
+  border: 1px solid rgba(255,255,255,.10) !important;
+}
+/* ── 4. The dark inner wells (chart frame / tracks / pills) → clear glass */
+body.forest-bg-on #view-dashboard .graph-display,
+body.forest-bg-on #view-dashboard .erm-track,
+body.forest-bg-on #view-dashboard .distribution-pill {
+  background: rgba(8,10,16,.28) !important;
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.06) !important;
+}
+/* safety: if the island's own hide-rule ever went missing, this guarantees
+   the old momentum content stays hidden while the island owns the card */
+#view-dashboard .dash-card-momentum.island-active .fi-orig { display: none !important; }
+
+/* ── 5. Daily-island layout (compact, ungated) — also sets the ZOOM height */
+#forest-island-host { position: relative; display: flex; flex-direction: column; gap: 10px; }
+#forest-island-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 8px; }
+#forest-island-head .fi-titlewrap { display: flex; flex-direction: column; gap: 2px; }
+#forest-island-head .fi-kicker { font-family: var(--font-display,'Chakra Petch',sans-serif); font-size: 9.5px; font-weight: 700; letter-spacing: 2.4px; color: var(--telemetry,#3ddcff); }
+#forest-island-head .fi-title { font-family: var(--font-display,'Chakra Petch',sans-serif); font-size: 16px; font-weight: 700; color: #fff; }
+#forest-island-head .fi-right { text-align: right; }
+#forest-island-head .fi-count { font-family: var(--font-num,'Space Grotesk',monospace); font-size: 24px; font-weight: 800; color: #fff; line-height: 1; }
+#forest-island-head .fi-sub { font-size: 8.5px; letter-spacing: 1.2px; color: var(--text-secondary,#9aa3b5); text-transform: uppercase; }
+/* taller canvas = part of the "zoomed-in" feel */
+#forest-island-canvas {
+  width: 100%; height: 260px; display: block; border-radius: 14px;
+  background: radial-gradient(120% 90% at 50% 0%, rgba(61,220,255,.05), transparent 60%), linear-gradient(180deg, #070910, #0a0d16);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.05), inset 0 0 60px -40px rgba(61,220,255,.35);
+}
+#forest-island-host .fi-empty {
+  position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+  color: var(--text-muted,#5b6478); font-size: 12px; pointer-events: none; text-align: center; padding: 0 16px;
+}
