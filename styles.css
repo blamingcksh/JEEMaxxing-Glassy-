@@ -5497,6 +5497,9 @@ body.forest-bg-on #view-dashboard .graph-display::after { display: none !importa
 body.forest-bg-on #view-dashboard .dash-card-momentum .kicker { color: var(--text-secondary, #9aa3b5) !important; }
 /* subject tiles inside the tracker → uniform glass, no coloured frame */
 body.forest-bg-on #view-dashboard .compact-subject-card {
+   #forest-island-canvas {
+  filter: saturate(1.35) contrast(1.06) brightness(1.02);
+}
   background: rgba(255,255,255,.04) !important;
   border: 1px solid rgba(255,255,255,.10) !important;
   box-shadow: none !important;
