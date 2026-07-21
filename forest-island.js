@@ -209,10 +209,105 @@
     function g(id) { var e = document.getElementById(id); return e ? (parseInt(e.textContent, 10) || 0) : 0; }
     return { physics: g('physics-count'), chemistry: g('chemistry-count'), maths: g('maths-count') };
   }
+  /* ── daily persistence + shared visual counts ─────────────────────────── */
+  var LS_DAILY = 'jeemax_forest_daily_v1';
+  var bootTime = Date.now();
+  var userTouched = false;
+  var restoreTries = 0;
+
+  try {
+    document.addEventListener('pointerdown', function () { userTouched = true; }, { once: true, capture: true });
+    document.addEventListener('keydown', function () { userTouched = true; }, { once: true, capture: true });
+  } catch (e) {}
+
+  function todayKey() {
+    return new Date().toISOString().slice(0, 10);
+  }
+
+  function getBankSafe() {
+    try {
+      if (Array.isArray(window.questionBank) && window.questionBank.length) return window.questionBank;
+      if (window.AppState && Array.isArray(window.AppState.questionBank) && window.AppState.questionBank.length) {
+        return window.AppState.questionBank;
+      }
+    } catch (e) {}
+    return [];
+  }
+
+  function loadDailyStore() {
+    try {
+      var o = JSON.parse(localStorage.getItem(LS_DAILY) || '{}');
+      return (o && typeof o === 'object') ? o : {};
+    } catch (e) {
+      return {};
+    }
+  }
+
+  function saveDailyStore(o) {
+    try {
+      localStorage.setItem(LS_DAILY, JSON.stringify(o));
+    } catch (e) {}
+  }
+
+  function getSavedCounts(date) {
+    var st = loadDailyStore();
+    var c = st[date] || {};
+    return {
+      physics: parseInt(c.physics, 10) || 0,
+      chemistry: parseInt(c.chemistry, 10) || 0,
+      maths: parseInt(c.maths, 10) || 0
+    };
+  }
+
+  function mergeCounts(a, b) {
+    return {
+      physics: Math.max(a.physics || 0, b.physics || 0),
+      chemistry: Math.max(a.chemistry || 0, b.chemistry || 0),
+      maths: Math.max(a.maths || 0, b.maths || 0)
+    };
+  }
+
+  function readVisualCounts() {
+    return mergeCounts(readLiveCounts(), getSavedCounts(todayKey()));
+  }
+
+  function persistCounts(counts, force) {
+    var total = (counts.physics || 0) + (counts.chemistry || 0) + (counts.maths || 0);
+    if (!force && !userTouched && total === 0) return;
+
+    var st = loadDailyStore();
+    st[todayKey()] = {
+      physics: counts.physics || 0,
+      chemistry: counts.chemistry || 0,
+      maths: counts.maths || 0,
+      updatedAt: Date.now()
+    };
+    saveDailyStore(st);
+  }
+
+  function restoreCountersFromStore() {
+    var saved = getSavedCounts(todayKey());
+    var ids = {
+      physics: 'physics-count',
+      chemistry: 'chemistry-count',
+      maths: 'maths-count'
+    };
+
+    var found = false;
+    for (var k in ids) {
+      var node = document.getElementById(ids[k]);
+      if (!node) continue;
+      found = true;
+
+      var cur = parseInt(node.textContent, 10) || 0;
+      if (cur < saved[k]) node.textContent = String(saved[k]);
+    }
+    return found;
+  }
   /* real solved-today questions per subject (just for qElo / oak flavour) */
   function todayBySubject() {
     var tk = new Date().toISOString().slice(0, 10), out = { physics:[], chemistry:[], maths:[] };
-    var qb = window.questionBank || [];
+    var qb = getBankSafe();
     for (var i = 0; i < qb.length; i++) { var q = qb[i]; if (!q || q.status !== 'solved') continue; if (!q.lastReviewedAt || q.lastReviewedAt.slice(0,10) !== tk) continue; var s = normSub(q.subject); if (out[s]) out[s].push(q); }
     return out;
   }
@@ -464,7 +559,7 @@
   /* ── sync to live counters, with island expansion if needed ── */
   function syncToLive() {
     if (!iBuilt) return;
-    var live = readLiveCounts(), today = todayBySubject();
+    var live = readVisualCounts(), today = todayBySubject();
 
     var totalWant = (live.physics || 0) + (live.chemistry || 0) + (live.maths || 0);
     while (iBuilt && landCapacity() < totalWant && LAND_R < MAX_LAND_R) {
@@ -663,8 +758,42 @@ try {
     document.addEventListener('visibilitychange', function () { if (!document.hidden && iVisible && iBuilt) startILoop(); });
     // react the instant a counter changes (manual +/- OR a real solve) — no 3s wait
     try {
-      counterObs = new MutationObserver(function () { syncToLive(); if (iVisible && !iBuilt) ensureIslandBuilt(); });
-      ['physics-count', 'chemistry-count', 'maths-count'].forEach(function (id) { var e = document.getElementById(id); if (e) counterObs.observe(e, { childList:true, subtree:true, characterData:true }); });
+      var lastCounterSig = JSON.stringify(readLiveCounts());
+      var syncPending = false;
+
+      counterObs = new MutationObserver(function () {
+        if (syncPending) return;
+        syncPending = true;
+
+        requestAnimationFrame(function () {
+          syncPending = false;
+
+          var live = readLiveCounts();
+          var sig = JSON.stringify(live);
+          if (sig === lastCounterSig) return;
+          lastCounterSig = sig;
+
+          var saved = getSavedCounts(todayKey());
+          var liveTotal = (live.physics || 0) + (live.chemistry || 0) + (live.maths || 0);
+          var savedTotal = (saved.physics || 0) + (saved.chemistry || 0) + (saved.maths || 0);
+
+          // If the app resets counters to 0 on load, restore today's saved trees.
+          if (!userTouched && liveTotal === 0 && savedTotal > 0) {
+            restoreCountersFromStore();
+          } else {
+            persistCounts(live, false);
+          }
+
+          syncToLive();
+          if (iVisible && !iBuilt) ensureIslandBuilt();
+        });
+      });
+
+      counterObs.observe(document.documentElement, {
+        childList: true,
+        subtree: true,
+        characterData: true
+      });
     } catch (e) {}
     setInterval(function () {                                       // safety net + visibility/date
       var dash = document.getElementById('view-dashboard');
@@ -673,6 +802,14 @@ try {
       syncToLive();
       if (iVisible && iBuilt && !iRaf) startILoop();
     }, 3000);
+
+    (function ensureRestored() {
+      var found = restoreCountersFromStore();
+      if (!found && restoreTries++ < 20) setTimeout(ensureRestored, 250);
+    })();
+
+    persistCounts(readVisualCounts(), true);
+
     syncToLive();
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', mount); else mount();

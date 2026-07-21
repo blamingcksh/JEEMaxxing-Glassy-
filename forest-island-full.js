@@ -48,6 +48,8 @@ var state = {
 
 var ui = {};
 var rebuildTimer = null;
+var lastFullSig = '';
+var fullPoll = null;
 
 var TOD = [
   { t: 0,   top: 0x0a0e1c, bot: 0x141a2a, sun: 0x3a4a6a, sunI: 0.15, hemi: 0x2a3040, fog: 0x0e1220 },
@@ -145,6 +147,128 @@ function getBank() {
     }
   } catch (e) {}
   return [];
+}
+
+var LS_DAILY = 'jeemax_forest_daily_v1';
+
+function loadDailyStore() {
+  try {
+    var o = JSON.parse(localStorage.getItem(LS_DAILY) || '{}');
+    return (o && typeof o === 'object') ? o : {};
+  } catch (e) {
+    return {};
+  }
+}
+
+function getSavedCounts(dateStr) {
+  var st = loadDailyStore();
+  var c = st[dateStr] || {};
+  return {
+    physics: parseInt(c.physics, 10) || 0,
+    chemistry: parseInt(c.chemistry, 10) || 0,
+    maths: parseInt(c.maths, 10) || 0
+  };
+}
+
+function readLiveCounts() {
+  function g(id) {
+    var e = document.getElementById(id);
+    return e ? (parseInt(e.textContent, 10) || 0) : 0;
+  }
+  return {
+    physics: g('physics-count'),
+    chemistry: g('chemistry-count'),
+    maths: g('maths-count')
+  };
+}
+
+function getDailyCounts(dateStr) {
+  var saved = getSavedCounts(dateStr);
+
+  if (dateStr === todayISO()) {
+    var live = readLiveCounts();
+    return {
+      physics: Math.max(live.physics, saved.physics),
+      chemistry: Math.max(live.chemistry, saved.chemistry),
+      maths: Math.max(live.maths, saved.maths)
+    };
+  }
+
+  return saved;
+}
+
+function dateKeyFromMs(ms) {
+  var d = new Date(ms);
+  var m = ('0' + (d.getMonth() + 1)).slice(-2);
+  var day = ('0' + d.getDate()).slice(-2);
+  return d.getFullYear() + '-' + m + '-' + day;
+}
+
+function syntheticElo(dateStr, subj, i) {
+  var h = hash(dateStr.length + i * 7 + 3, subj.length * 3 + i * 11 + 1);
+  return 1000 + Math.floor(h * 800);
+}
+
+function makeSynthetic(dateStr, subj, i) {
+  return {
+    subject: subj,
+    qElo: syntheticElo(dateStr, subj, i),
+    lastReviewedAt: dateStr + 'T12:00:00',
+    status: 'solved',
+    synthetic: true
+  };
+}
+
+function allDailyDates() {
+  var st = loadDailyStore();
+  var dates = {};
+
+  Object.keys(st).forEach(function (d) {
+    dates[d] = true;
+  });
+
+  dates[todayISO()] = true;
+  return Object.keys(dates);
+}
+
+function countSyntheticInRange(solvedByDate, start, end) {
+  var n = 0;
+  var dates = allDailyDates();
+
+  for (var i = 0; i < dates.length; i++) {
+    var dateStr = dates[i];
+    var ms = new Date(dateStr + 'T12:00:00').getTime();
+    if (isNaN(ms) || ms < start.getTime() || ms > end.getTime()) continue;
+
+    var counts = getDailyCounts(dateStr);
+    var solved = solvedByDate[dateStr] || { physics: 0, chemistry: 0, maths: 0 };
+
+    n += Math.max(0, (counts.physics || 0) - (solved.physics || 0));
+    n += Math.max(0, (counts.chemistry || 0) - (solved.chemistry || 0));
+    n += Math.max(0, (counts.maths || 0) - (solved.maths || 0));
+  }
+
+  return n;
+}
+
+function solvedBankCount() {
+  var b = getBank();
+  var n = 0;
+  for (var i = 0; i < b.length; i++) {
+    if (b[i] && b[i].status === 'solved') n++;
+  }
+  return n;
+}
+
+function fullSig() {
+  var c = readLiveCounts();
+  var store = '';
+  try { store = localStorage.getItem(LS_DAILY) || ''; } catch (e) {}
+
+  return store +
+    '|' + c.physics + ',' + c.chemistry + ',' + c.maths +
+    '|' + getBank().length +
+    '|' + solvedBankCount();
 }
 
 /* ── mount the expand button onto the Daily Grove card ── */
@@ -933,14 +1057,32 @@ function computeData() {
   var eloSum = 0;
   var maxElo = 0;
 
+  var solvedByDate = {};
+
+  function addStats(q) {
+    var subj = normSub(q.subject);
+    if (bySubject[subj] != null) bySubject[subj]++;
+
+    var elo = qEloOf(q);
+    eloSum += elo;
+    if (elo > maxElo) maxElo = elo;
+    if (elo >= 2300) oaks++;
+  }
+
   for (var i = 0; i < bank.length; i++) {
     var q = bank[i];
     if (!q || q.status !== 'solved') continue;
 
     var t = getTimeMs(q);
+    var subj = normSub(q.subject);
+
+    if (t != null) {
+      var dk = dateKeyFromMs(t);
+      if (!solvedByDate[dk]) solvedByDate[dk] = { physics: 0, chemistry: 0, maths: 0 };
+      solvedByDate[dk][subj]++;
+    }
 
     var inCurrent;
-
     if (state.period === 'all') {
       inCurrent = (t == null) ? true : (t <= range.end.getTime());
     } else {
@@ -949,20 +1091,38 @@ function computeData() {
 
     if (inCurrent) {
       list.push(q);
-
-      var subj = normSub(q.subject);
-      if (bySubject[subj] != null) bySubject[subj]++;
-
-      var elo = qEloOf(q);
-      eloSum += elo;
-
-      if (elo > maxElo) maxElo = elo;
-      if (elo >= 2300) oaks++;
+      addStats(q);
     } else if (range.prevStart && t != null) {
       if (t >= range.prevStart.getTime() && t <= range.prevEnd.getTime()) {
         prevCount++;
       }
     }
+  }
+
+  var dates = allDailyDates();
+  for (var di = 0; di < dates.length; di++) {
+    var dateStr = dates[di];
+    var ms = new Date(dateStr + 'T12:00:00').getTime();
+    if (isNaN(ms)) continue;
+
+    if (ms < range.start.getTime() || ms > range.end.getTime()) continue;
+
+    var counts = getDailyCounts(dateStr);
+    var solved = solvedByDate[dateStr] || { physics: 0, chemistry: 0, maths: 0 };
+
+    ['physics', 'chemistry', 'maths'].forEach(function (subj) {
+      var extra = Math.max(0, (counts[subj] || 0) - (solved[subj] || 0));
+
+      for (var n = 0; n < extra; n++) {
+        var sq = makeSynthetic(dateStr, subj, n);
+        list.push(sq);
+        addStats(sq);
+      }
+    });
+  }
+
+  if (range.prevStart) {
+    prevCount += countSyntheticInRange(solvedByDate, range.prevStart, range.prevEnd);
   }
 
   list.sort(function (a, b) {
