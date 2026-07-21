@@ -1,16 +1,16 @@
 /* ============================================================================
-   theme.js — JEEMaxxing Theme Engine (append-only, self-wiring).
-   Injects a glass theme-switcher pill next to the logo, opens an aesthetic
-   dropdown, and re-skins the whole app by flipping [data-theme] on <html>.
-   Palettes live in styles.css (THEME ENGINE block). Choice persists in
-   localStorage('jeemax_theme'). Zero dependencies on app.js / storage.js.
+   theme.js — JEEMaxxing Theme Engine v2
+   Accent themes (data-theme) × appearance mode (data-mode: midnight | dusk).
+   Pill button docks next to the logo; dropdown re-skins the whole app live.
+   Persists: localStorage 'jeemax_theme' + 'jeemax_mode'.
    ============================================================================ */
 (function () {
   'use strict';
   if (window.__themeInit) return;
   window.__themeInit = true;
 
-  var LS = 'jeemax_theme';
+  var LS_THEME = 'jeemax_theme';
+  var LS_MODE  = 'jeemax_mode';
 
   var THEMES = [
     { id: 'furnace',    name: 'Furnace',    desc: 'Amber heat · stock build', dots: ['#ffb224', '#ff7a1a', '#3ddcff'] },
@@ -22,11 +22,15 @@
     { id: 'stealth',    name: 'Stealth',    desc: 'Monochrome ops',           dots: ['#e5e7eb', '#9ca3af', '#4b5563'] }
   ];
 
+  var MODES = [
+    { id: 'midnight', name: 'Midnight', icon: '🌙', desc: 'Deep-night terminal' },
+    { id: 'dusk',     name: 'Dusk',     icon: '🌆', desc: 'Evening glass · ~65% dark' }
+  ];
+
   var btn = null, panel = null;
 
-  function current() {
-    try { return localStorage.getItem(LS) || 'furnace'; } catch (e) { return 'furnace'; }
-  }
+  function current() { try { return localStorage.getItem(LS_THEME) || 'furnace'; } catch (e) { return 'furnace'; } }
+  function currentMode() { try { return localStorage.getItem(LS_MODE) || 'midnight'; } catch (e) { return 'midnight'; } }
   function byId(id) {
     for (var i = 0; i < THEMES.length; i++) { if (THEMES[i].id === id) return THEMES[i]; }
     return THEMES[0];
@@ -38,7 +42,7 @@
   function apply(id, persist) {
     var t = byId(id);
     document.documentElement.setAttribute('data-theme', t.id);
-    if (persist !== false) { try { localStorage.setItem(LS, t.id); } catch (e) {} }
+    if (persist !== false) { try { localStorage.setItem(LS_THEME, t.id); } catch (e) {} }
     if (btn) {
       var d = btn.querySelector('.theme-btn-dot');
       if (d) d.style.background = dotBg(t);
@@ -52,18 +56,30 @@
         opts[i].setAttribute('aria-selected', on ? 'true' : 'false');
       }
     }
-    try {
-      document.dispatchEvent(new CustomEvent('jeemax:themechange', { detail: { theme: t.id } }));
-    } catch (e) {}
+    try { document.dispatchEvent(new CustomEvent('jeemax:themechange', { detail: { theme: t.id } })); } catch (e) {}
+  }
+
+  function applyMode(id, persist) {
+    var valid = 'midnight';
+    for (var i = 0; i < MODES.length; i++) { if (MODES[i].id === id) valid = id; }
+    document.documentElement.setAttribute('data-mode', valid);
+    if (persist !== false) { try { localStorage.setItem(LS_MODE, valid); } catch (e) {} }
+    if (panel) {
+      var mbs = panel.querySelectorAll('.theme-mode-btn');
+      for (var j = 0; j < mbs.length; j++) {
+        var on = mbs[j].getAttribute('data-mode-id') === valid;
+        mbs[j].classList.toggle('active', on);
+        mbs[j].setAttribute('aria-pressed', on ? 'true' : 'false');
+      }
+    }
+    try { document.dispatchEvent(new CustomEvent('jeemax:modechange', { detail: { mode: valid } })); } catch (e) {}
   }
 
   function isOpen() { return !!(panel && panel.classList.contains('open')); }
-
   function position() {
     if (!btn || !panel) return;
     var r = btn.getBoundingClientRect();
-    var pw = panel.offsetWidth || 264;
-    var ph = panel.offsetHeight || 400;
+    var pw = panel.offsetWidth || 264, ph = panel.offsetHeight || 440;
     var left = Math.max(12, Math.min(r.left, window.innerWidth - pw - 12));
     var top = r.bottom + 10;
     if (top + ph > window.innerHeight - 12) top = Math.max(12, r.top - ph - 10);
@@ -78,7 +94,6 @@
     var sb = document.getElementById('sidebar') || document.querySelector('.sidebar');
     if (!sb) { requestAnimationFrame(mount); return; }
 
-    // ── Trigger pill — docks right after the logo in either layout ──
     btn = document.createElement('button');
     btn.id = 'theme-btn';
     btn.className = 'theme-btn';
@@ -93,13 +108,22 @@
     if (logo && logo.parentNode === sb) sb.insertBefore(btn, logo.nextSibling);
     else sb.insertBefore(btn, sb.firstChild);
 
-    // ── Dropdown panel — fixed + appended to body so it's never clipped ──
     panel = document.createElement('div');
     panel.id = 'theme-panel';
     panel.className = 'theme-panel';
     panel.setAttribute('role', 'listbox');
     panel.setAttribute('aria-label', 'App theme');
-    var html = ['<div class="theme-panel-head">THEME ENGINE</div>'];
+
+    var html = ['<div class="theme-panel-modes" role="group" aria-label="Appearance mode">'];
+    for (var m = 0; m < MODES.length; m++) {
+      var mo = MODES[m];
+      html.push(
+        '<button type="button" class="theme-mode-btn" data-mode-id="' + mo.id + '" aria-pressed="false" title="' + mo.desc + '">' +
+          '<span class="theme-mode-ic">' + mo.icon + '</span>' + mo.name +
+        '</button>'
+      );
+    }
+    html.push('</div><div class="theme-panel-head">THEME ENGINE</div>');
     for (var i = 0; i < THEMES.length; i++) {
       var t = THEMES[i];
       html.push(
@@ -116,38 +140,39 @@
     panel.innerHTML = html.join('');
     document.body.appendChild(panel);
 
-    // ── Wiring ──
-    btn.addEventListener('click', function (e) {
-      e.stopPropagation();
-      if (isOpen()) close(); else open();
-    });
+    btn.addEventListener('click', function (e) { e.stopPropagation(); if (isOpen()) close(); else open(); });
+
     var opts = panel.querySelectorAll('.theme-opt');
     for (var j = 0; j < opts.length; j++) {
-      opts[j].addEventListener('click', function () {
-        apply(this.getAttribute('data-theme-id'));   // panel stays open → live preview
-      });
+      opts[j].addEventListener('click', function () { apply(this.getAttribute('data-theme-id')); });
     }
+    var mbs = panel.querySelectorAll('.theme-mode-btn');
+    for (var n = 0; n < mbs.length; n++) {
+      mbs[n].addEventListener('click', function () { applyMode(this.getAttribute('data-mode-id')); });
+    }
+
     document.addEventListener('pointerdown', function (e) {
       if (!isOpen()) return;
       if (btn.contains(e.target) || panel.contains(e.target)) return;
       close();
     }, true);
-    document.addEventListener('keydown', function (e) {
-      if (e.key === 'Escape' && isOpen()) close();
-    });
+    document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && isOpen()) close(); });
     window.addEventListener('resize', function () { if (isOpen()) position(); });
     window.addEventListener('scroll', function () { if (isOpen()) position(); }, true);
 
     apply(current(), false);
+    applyMode(currentMode(), false);
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', mount);
   else mount();
 
-  // Debug / programmatic surface:  JEEMaxTheme.set('sakura')
   window.JEEMaxTheme = {
     set: function (id) { apply(id, true); },
     get: current,
-    themes: THEMES
+    setMode: function (id) { applyMode(id, true); },
+    getMode: currentMode,
+    themes: THEMES,
+    modes: MODES
   };
 })();
