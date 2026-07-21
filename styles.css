@@ -5319,3 +5319,11 @@ html[data-mode="dusk"] #practice-modal .practice-cockpit { --ck-surface: #31364e
   #practice-modal .ck-identity { min-width: 0; }
   #practice-modal .ck-utils { margin-left: auto; }
 }
+
+/* ════════════════════════════════════════════════════════════════════════
+   ELO CHIP FIX — kill the header-slot chip that CK_ENGINE wedged inside
+   .ck-combo (it broke the cockpit row alignment). The bottom-of-modal
+   .elo-shift-chip stays. SR drawer's #sr-elo-header-slot is untouched.
+   Reversible: delete this rule.
+   ════════════════════════════════════════════════════════════════════════ */
+#practice-modal .practice-cockpit #elo-header-slot { display: none !important; }
