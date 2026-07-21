@@ -6151,3 +6151,8 @@ body.forest-lab-open { overflow: hidden; }
   box-shadow: 0 0 14px rgba(61,220,255,.35); transform: translateY(-1px);
 }
 #forest-island-canvas { cursor: pointer; }
+
+/* Hide the old legacy full-screen lab button */
+#fi-expand {
+  display: none !important;
+}

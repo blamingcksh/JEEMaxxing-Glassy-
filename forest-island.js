@@ -685,6 +685,12 @@ function ensureForestLabOverlay() {
 }
 
 function openForestLab() {
+  // Prefer the newer embedded full-screen island instead of the old lab iframe.
+  if (window.__forestIslandFull && typeof window.__forestIslandFull.open === 'function') {
+    window.__forestIslandFull.open();
+    return;
+  }
+
   ensureForestLabOverlay();
 
   labOverlay.classList.remove('loaded');
