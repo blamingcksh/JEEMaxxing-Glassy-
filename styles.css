@@ -6099,3 +6099,55 @@ body.fi-full-open {
   border: 1px solid rgba(255,255,255,.10) !important;
   box-shadow: none !important;
 }
+/* ── Forest Lab Overlay ── */
+body.forest-lab-open { overflow: hidden; }
+.forest-lab-overlay {
+  position: fixed; inset: 0; z-index: 1300;
+  opacity: 0; pointer-events: none;
+  transition: opacity .28s ease;
+  background: rgba(5,6,10,.92);
+}
+.forest-lab-overlay.open { opacity: 1; pointer-events: auto; }
+.forest-lab-shell {
+  position: relative; width: 100%; height: 100%;
+}
+.forest-lab-frame {
+  position: absolute; inset: 0; width: 100%; height: 100%;
+  border: 0; display: block; background: #070910;
+  opacity: 0; transition: opacity .35s ease;
+}
+.forest-lab-overlay.loaded .forest-lab-frame { opacity: 1; }
+.forest-lab-loading {
+  position: absolute; inset: 0; display: grid; place-items: center;
+  color: #ffd9a0; font-family: var(--font-display, monospace);
+  letter-spacing: 2px; font-size: 13px; font-weight: 800;
+  background: #070910; transition: opacity .3s ease;
+}
+.forest-lab-overlay.loaded .forest-lab-loading { opacity: 0; pointer-events: none; }
+.forest-lab-actions {
+  position: absolute; top: 14px; right: 14px; z-index: 5;
+  display: flex; gap: 8px;
+}
+.forest-lab-btn {
+  width: 38px; height: 38px; border-radius: 12px;
+  border: 1px solid rgba(255,255,255,.16);
+  background: rgba(8,10,16,.72); color: #e8eefc;
+  font-size: 16px; cursor: pointer; display: grid; place-items: center;
+  backdrop-filter: blur(12px); transition: all .16s ease;
+}
+.forest-lab-btn:hover {
+  border-color: rgba(61,220,255,.55); color: #fff;
+  box-shadow: 0 0 18px rgba(61,220,255,.35); transform: translateY(-1px);
+}
+.fi-expand {
+  appearance: none; border: 1px solid rgba(255,255,255,.14);
+  background: rgba(255,255,255,.05); color: #dbe4ff;
+  width: 28px; height: 28px; border-radius: 9px; cursor: pointer;
+  font-size: 14px; display: grid; place-items: center;
+  margin-bottom: 4px; transition: all .16s ease;
+}
+.fi-expand:hover {
+  border-color: var(--telemetry, #3ddcff); color: #fff;
+  box-shadow: 0 0 14px rgba(61,220,255,.35); transform: translateY(-1px);
+}
+#forest-island-canvas { cursor: pointer; }
