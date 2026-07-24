@@ -10,7 +10,6 @@
 (function () {
 'use strict';
 if (window.__forestIslandFullInit) return; window.__forestIslandFullInit = true;
-window.__forestIslandFullCosmetics = true;
 
 /* ---------- helpers ---------- */
 function el(tag,a){ var n=document.createElement(tag); if(a)for(var k in a){ if(k==='html')n.innerHTML=a[k]; else if(k==='class')n.className=a[k]; else n.setAttribute(k,a[k]); } return n; }
@@ -27,19 +26,7 @@ function qEloOf(q){ return (typeof q.qElo==='number'&&q.qElo>0)?q.qElo:1200; }
 function getTimeMs(q){ var s=q.lastReviewedAt||q.solvedAt||q.createdAt||q.date||q.ts; if(!s)return null; var t=new Date(s).getTime(); return isNaN(t)?null:t; }
 function getBank(){ try{ if(Array.isArray(window.questionBank)&&window.questionBank.length)return window.questionBank; if(window.AppState&&Array.isArray(window.AppState.questionBank)&&window.AppState.questionBank.length)return window.AppState.questionBank; }catch(e){} return []; }
 function FG(){ return window.__forestGrowth||null; }
-function loadDaily(){
-  function read(key){ try{ var o=JSON.parse(localStorage.getItem(key)||'{}'); return (o&&typeof o==='object')?o:{}; }catch(e){ return {}; } }
-  var forest=read('jeemax_forest_daily_v1');
-  var acct=read('jeemax_acct_days_v1');
-  var out={};
-  Object.keys(forest).forEach(function(k){ out[k]=forest[k]; });
-  Object.keys(acct).forEach(function(k){
-    var r=acct[k]||{};
-    var s=r.solved||r;
-    out[k]={physics:+s.physics||0,chemistry:+s.chemistry||0,maths:+s.maths||0,seen:r.seen!==false,targets:r.targets};
-  });
-  return out;
-}
+function loadDaily(){ try{ var o=JSON.parse(localStorage.getItem(K_DAYS)||'{}'); return (o&&typeof o==='object')?o:{}; }catch(e){ return {}; } }
 function dailyCounts(dk){ var st=loadDaily(); var sv=st[dk]||{}; var out={physics:+sv.physics||0,chemistry:+sv.chemistry||0,maths:+sv.maths||0}; if(dk===todayISO()){ function g(id){ var e=document.getElementById(id); return e?(parseInt(e.textContent,10)||0):0; } out.physics=Math.max(out.physics,g('physics-count'),+(window.solved&&window.solved.physics||0)); out.chemistry=Math.max(out.chemistry,g('chemistry-count'),+(window.solved&&window.solved.chemistry||0)); out.maths=Math.max(out.maths,g('maths-count'),+(window.solved&&window.solved.maths||0)); } return out; }
 function allDailyDates(){ var st=loadDaily(); var d={}; Object.keys(st).forEach(function(k){ d[k]=1; }); d[todayISO()]=1; return Object.keys(d); }
 
@@ -71,14 +58,8 @@ function eqCfg(){
   }
 }
 
-function fullSig(){
-  var c=dailyCounts(todayISO());
-  var st='';
-  try{
-    st=(localStorage.getItem('jeemax_forest_daily_v1')||'')+'|'+(localStorage.getItem('jeemax_acct_days_v1')||'');
-  }catch(e){}
-  return st+'|'+c.physics+','+c.chemistry+','+c.maths+'|'+getBank().length+'|'+(localStorage.getItem(K_EQ)||'');
-}
+function fullSig(){ var c=dailyCounts(todayISO()); var st=''; try{ st=localStorage.getItem(K_DAYS)||''; }catch(e){} return st+'|'+c.physics+','+c.chemistry+','+c.maths+'|'+getBank().length+'|'+(localStorage.getItem(K_EQ)||''); }
+
 /* the scatter guard (same rule as the live island) */
 function isLand(x,z,wY){ var r=Math.hypot(x,z); if(r>coastR(Math.atan2(z,x))-1.3) return false; var h=heightAt(x,z); return h>wY+0.30; }
 
@@ -176,8 +157,9 @@ function saturateMat(mat, amt){
   };
 }
 
-function windify(mat){ mat.onBeforeCompile=function(sh){ sh.uniforms.uTime={value:0}; sh.vertexShader='uniform float uTime;\n'+sh.vertexShader.replace('#include <begin_vertex>', "#include <begin_vertex>\n float wy=max(transformed.y,0.0);\n float wph=instanceMatrix[3][0]*0.5+instanceMatrix[3][2]*0.5;\n transformed.x+=sin(uTime*1.4+wph)*wy*0.22;\n transformed.z+=cos(uTime*1.1+wph*1.3)*wy*0.16; "); mat.userData.shader=sh; }; }
+function windify(mat){ mat.onBeforeCompile=function(sh){ sh.uniforms.uTime={value:0}; sh.vertexShader='uniform float uTime;\n'+sh.vertexShader.replace('#include <begin_vertex>',"#include <begin_vertex>\n float wy=max(transformed.y,0.0);\n float wph=instanceMatrix[3][0]*0.5+instanceMatrix[3][2]*0.5;\n transformed.x+=sin(uTime*1.4+wph)*wy*0.22;\n transformed.z+=cos(uTime*1.1+wph*1.3)*wy*0.16;"); mat.userData.shader=sh; }; }
 function jitter(T,g,amt){ var p=g.attributes.position.array, n=g.attributes.normal?g.attributes.normal.array:null, nn=p.length/3; for(var i=0;i<nn;i++){ var nx=n?n[i*3]:0,ny=n?n[i*3+1]:1,nz=n?n[i*3+2]:0; var h=hash(p[i*3]+9.1,p[i*3+2]+3.3); var dd=(h-0.5)*2*amt; p[i*3]+=nx*dd; p[i*3+1]+=ny*dd; p[i*3+2]+=nz*dd; } g.attributes.position.needsUpdate=true; return g; }
+
 /* ---------- globals ---------- */
 var K_EQ='jeemax_island_cosmetics_v1', K_DAYS='jeemax_forest_daily_v1';
 var THREE=null,threePromise=null,overlay=null,canvas=null,renderer=null,scene=null,camera=null,controls=null,world=null,skyEnv=null,treeMat=null,treeGeos=null,currentWater=null;
@@ -1226,7 +1208,8 @@ function buildTreeAssets(){
 }
 
 /* ---------- scene ---------- */
-function makeSky(){ var skyMat=new THREE.ShaderMaterial({side:THREE.BackSide,depthWrite:false,uniforms:{top:{value:new THREE.Color()},bottom:{value:new THREE.Color()},off:{value:18},exp:{value:0.62}},vertexShader:'varying vec3 vW;void main(){vec4 w=modelMatrix * vec4(position,1.0);vW=w.xyz;gl_Position=projectionMatrix * modelViewMatrix * vec4(position,1.0);}',fragmentShader:'uniform vec3 top;uniform vec3 bottom;uniform float off;uniform float exp;varying vec3 vW;void main(){float h=normalize(vW+vec3(0.0,off,0.0)).y;float t=pow(max(h,0.0),exp);gl_FragColor=vec4(mix(bottom,top,t),1.0);}'}); return {mesh:new THREE.Mesh(new THREE.SphereGeometry(600,32,16),skyMat),top:skyMat.uniforms.top.value,bottom:skyMat.uniforms.bottom.value}; }
+function makeSky(){ var skyMat=new THREE.ShaderMaterial({side:THREE.BackSide,depthWrite:false,uniforms:{top:{value:new THREE.Color()},bottom:{value:new THREE.Color()},off:{value:18},exp:{value:0.62}},vertexShader:'varying vec3 vW;void main(){vec4 w=modelMatrix*vec4(position,1.0);vW=w.xyz;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}',fragmentShader:'uniform vec3 top;uniform vec3 bottom;uniform float off;uniform float exp;varying vec3 vW;void main(){float h=normalize(vW+vec3(0.0,off,0.0)).y;float t=pow(max(h,0.0),exp);gl_FragColor=vec4(mix(bottom,top,t),1.0;}'}); return {mesh:new THREE.Mesh(new THREE.SphereGeometry(600,32,16),skyMat),top:skyMat.uniforms.top.value,bottom:skyMat.uniforms.bottom.value}; }
+
 function applyTOD(v){
   if(!skyEnv || !scene || !scene.fog) return;
   var a = TOD[0], b = TOD[TOD.length - 1];
@@ -1440,60 +1423,33 @@ function nightNow(){ var d=new Date(); var t=(d.getHours()+d.getMinutes()/60)/24
 /* ---------- controls ---------- */
 function viewRadius(){ return Math.max(10.5, LAND_R * 1.22); }
 function makeControls(cv){
-  var target=new THREE.Vector3(0,0,0), theta=0.7, phi=0.98, radius=viewRadius(), minR=4;
-  var pointers=new Map(), mode=null, lastPinchDist=0, lastMid={x:0,y:0};
+  var target=new THREE.Vector3(0,0,0),theta=0.7,phi=0.98,radius=viewRadius(),minR=4;
+  var pointers=new Map(),mode=null,lastPinchDist=0,lastMid={x:0,y:0};
   function clampR(){ radius=Math.max(minR,Math.min(Math.max(140,LAND_R*5),radius)); }
-  function update(){ var sp=Math.sin(phi), cp=Math.cos(phi); camera.position.set(target.x+radius*sp*Math.sin(theta), target.y+radius*cp, target.z+radius*sp*Math.cos(theta)); camera.lookAt(target); }
-  function pan(dx,dy){ var sc=radius*0.0011; var r=new THREE.Vector3().setFromMatrixColumn(camera.matrix,0), u=new THREE.Vector3().setFromMatrixColumn(camera.matrix,1); target.addScaledVector(r,-dx*sc); target.addScaledVector(u,dy*sc); if(target.length()>LAND_R*1.4) target.setLength(LAND_R*1.4); }
+  function update(){ var sp=Math.sin(phi),cp=Math.cos(phi); camera.position.set(target.x+radius*sp*Math.sin(theta),target.y+radius*cp,target.z+radius*sp*Math.cos(theta)); camera.lookAt(target); }
+  function pan(dx,dy){ var sc=radius*0.0011; var r=new THREE.Vector3().setFromMatrixColumn(camera.matrix,0),u=new THREE.Vector3().setFromMatrixColumn(camera.matrix,1); target.addScaledVector(r,-dx*sc); target.addScaledVector(u,dy*sc); if(target.length()>LAND_R*1.4)target.setLength(LAND_R*1.4); }
   function two(){ var a=[]; pointers.forEach(function(p){ a.push(p); }); return a; }
   function dist(a,b){ return Math.hypot(a.x-b.x,a.y-b.y); }
   function mid(a,b){ return {x:(a.x+b.x)/2,y:(a.y+b.y)/2}; }
-  cv.addEventListener('pointerdown',function(e){ try{ cv.setPointerCapture(e.pointerId); }catch(err){} pointers.set(e.pointerId,{x:e.clientX,y:e.clientY,button:e.button,shift:e.shiftKey}); if(pointers.size===1) mode=((e.button===2)||(e.button===1)||e.shiftKey||e.ctrlKey)?'pan':'rotate'; else if(pointers.size===2){ mode='pinch'; var p=two(); lastPinchDist=dist(p[0],p[1]); lastMid=mid(p[0],p[1]); } });
-  cv.addEventListener('pointermove',function(e){ if(!pointers.has(e.pointerId)) return; var p=pointers.get(e.pointerId), dx=e.clientX-p.x, dy=e.clientY-p.y; p.x=e.clientX; p.y=e.clientY; if(pointers.size===1){ if(mode==='rotate'){ theta-=dx*0.005; phi=Math.max(0.18,Math.min(1.45,phi-dy*0.005)); } else if(mode==='pan') pan(dx,dy); } else if(pointers.size===2){ var arr=two(), d=dist(arr[0],arr[1]), m=mid(arr[0],arr[1]); if(lastPinchDist>0){ radius*=lastPinchDist/d; clampR(); } pan(m.x-lastMid.x,m.y-lastMid.y); lastPinchDist=d; lastMid=m; } });
-  function endP(e){ if(pointers.has(e.pointerId)) pointers.delete(e.pointerId); if(pointers.size<2) lastPinchDist=0; if(pointers.size===1){ var rem=pointers.values().next().value; mode=(rem.button===2||rem.shift)?'pan':'rotate'; } if(pointers.size===0) mode=null; }
+  cv.addEventListener('pointerdown',function(e){ try{ cv.setPointerCapture(e.pointerId); }catch(err){} pointers.set(e.pointerId,{x:e.clientX,y:e.clientY,button:e.button,shift:e.shiftKey}); if(pointers.size===1)mode=((e.button===2)||(e.button===1)||e.shiftKey||e.ctrlKey)?'pan':'rotate'; else if(pointers.size===2){ mode='pinch'; var p=two(); lastPinchDist=dist(p[0],p[1]); lastMid=mid(p[0],p[1]); } });
+  cv.addEventListener('pointermove',function(e){ if(!pointers.has(e.pointerId))return; var p=pointers.get(e.pointerId),dx=e.clientX-p.x,dy=e.clientY-p.y; p.x=e.clientX; p.y=e.clientY; if(pointers.size===1){ if(mode==='rotate'){ theta-=dx*0.005; phi=Math.max(0.18,Math.min(1.45,phi-dy*0.005)); } else if(mode==='pan')pan(dx,dy); } else if(pointers.size===2){ var arr=two(),d=dist(arr[0],arr[1]),m=mid(arr[0],arr[1]); if(lastPinchDist>0){ radius*=lastPinchDist/d; clampR(); } pan(m.x-lastMid.x,m.y-lastMid.y); lastPinchDist=d; lastMid=m; } });
+  function endP(e){ if(pointers.has(e.pointerId))pointers.delete(e.pointerId); if(pointers.size<2)lastPinchDist=0; if(pointers.size===1){ var rem=pointers.values().next().value; mode=(rem.button===2||rem.shift)?'pan':'rotate'; } if(pointers.size===0)mode=null; }
   cv.addEventListener('pointerup',endP); cv.addEventListener('pointercancel',endP);
   cv.addEventListener('wheel',function(e){ e.preventDefault(); radius*=1+Math.sign(e.deltaY)*0.08; clampR(); },{passive:false});
   cv.addEventListener('contextmenu',function(e){ e.preventDefault(); });
-  return {update:update,reset:function(r){ target.set(0,0,0); theta=0.7; phi=0.98; radius=r||viewRadius(); clampR(); }};
-}
+  return {update:update,reset:function(r){ target.set(0,0,0); theta=0.7; phi=0.98; radius=r||viewRadius(); clampR(); }}; }
+
 /* ---------- data ---------- */
 function getRange(period,anchor){ var end=anchor?new Date(anchor+'T23:59:59'):new Date(); if(isNaN(end.getTime()))end=new Date(); end.setHours(23,59,59,999); var start,prevStart=null,prevEnd=null; if(period==='today'){ start=new Date(anchor+'T00:00:00'); } else if(period==='yesterday'){ var yd=new Date(new Date(anchor+'T00:00:00').getTime()-86400000); var y=jd(yd); start=new Date(y+'T00:00:00'); end=new Date(y+'T23:59:59.999'); } else if(period==='all'){ start=new Date(0); } else { var days=period==='week'?7:period==='month'?30:365; start=new Date(end.getTime()); start.setDate(start.getDate()-(days-1)); start.setHours(0,0,0,0); prevEnd=new Date(start.getTime()-1); prevStart=new Date(prevEnd.getTime()); prevStart.setDate(prevStart.getDate()-(days-1)); prevStart.setHours(0,0,0,0); prevEnd.setHours(23,59,59,999); } return {start:start,end:end,prevStart:prevStart,prevEnd:prevEnd}; }
 function jd(d){ return d.getFullYear()+'-'+('0'+(d.getMonth()+1)).slice(-2)+'-'+('0'+d.getDate()).slice(-2); }
 function computeData(){
-  var bank=getBank(), range=getRange(state.period,state.endDate), today=todayISO();
-  var list=[], prevCount=0, bySubject={physics:0,chemistry:0,maths:0}, oaks=0, eloSum=0, maxElo=0, solvedByDate={};
-  function addStats(subj,elo){ if(bySubject[subj]!=null) bySubject[subj]++; eloSum+=elo; if(elo>maxElo) maxElo=elo; if(elo>=2300) oaks++; }
-  for(var i=0;i<bank.length;i++){
-    var q=bank[i]; if(!q||q.status!=='solved') continue;
-    var t=getTimeMs(q), subj=normSub(q.subject), elo=qEloOf(q);
-    if(t!=null){ var dk=jd(new Date(t)); if(!solvedByDate[dk]) solvedByDate[dk]={physics:0,chemistry:0,maths:0}; solvedByDate[dk][subj]++; }
-    var inCur=(state.period==='all')?(t==null?true:t<=range.end.getTime()):(t!=null&&t>=range.start.getTime()&&t<=range.end.getTime());
-    if(inCur){ list.push(q); addStats(subj,elo); }
-    else if(range.prevStart&&t!=null&&t>=range.prevStart.getTime()&&t<=range.prevEnd.getTime()) prevCount++;
-  }
-  var dates=allDailyDates(), fg=FG(), cumNow=fg?fg.cum('physics'):0;
-  for(var di=0;di<dates.length;di++){
-    var dk=dates[di]; var ms=new Date(dk+'T12:00:00').getTime(); if(isNaN(ms)) continue;
-    if(ms<range.start.getTime()||ms>range.end.getTime()) continue;
-    var counts=dailyCounts(dk), solved=solvedByDate[dk]||{physics:0,chemistry:0,maths:0}, isToday=dk===todayISO();
-    ['physics','chemistry','maths'].forEach(function(subj){
-      var extra=Math.max(0,(counts[subj]||0)-(solved[subj]||0));
-      for(var n=0;n<extra;n++){
-        var e2=1000+Math.floor(hash(dk.length+n*7+3, subj.length*3+n*11+1)*800);
-        list.push({subject:subj,qElo:e2,lastReviewedAt:dk+'T12:00:00',status:'solved',synthetic:true,difficulty:0.5,growSeconds:10800,plantCumStudy:isToday?cumNow:(cumNow-10800)});
-        addStats(subj,e2);
-      }
-    });
-  }
-  if(range.prevStart){
-    var pdates=allDailyDates();
-    for(var pi=0;pi<pdates.length;pi++){
-      var pdk=pdates[pi]; var pms=new Date(pdk+'T12:00:00').getTime();
-      if(isNaN(pms)||pms<range.prevStart.getTime()||pms>range.prevEnd.getTime()) continue;
-      var pc=dailyCounts(pdk), ps=solvedByDate[pdk]||{physics:0,chemistry:0,maths:0};
-      prevCount+=Math.max(0,(pc.physics||0)-(ps.physics||0))+Math.max(0,(pc.chemistry||0)-(ps.chemistry||0))+Math.max(0,(pc.maths||0)-(ps.maths||0));
-    }
-  }
+  var bank=getBank(),range=getRange(state.period,state.endDate),today=todayISO();
+  var list=[],prevCount=0,bySubject={physics:0,chemistry:0,maths:0},oaks=0,eloSum=0,maxElo=0,solvedByDate={};
+  function addStats(subj,elo){ if(bySubject[subj]!=null)bySubject[subj]++; eloSum+=elo; if(elo>maxElo)maxElo=elo; if(elo>=2300)oaks++; }
+  for(var i=0;i<bank.length;i++){ var q=bank[i]; if(!q||q.status!=='solved')continue; var t=getTimeMs(q),subj=normSub(q.subject),elo=qEloOf(q); if(t!=null){ var dk=jd(new Date(t)); if(!solvedByDate[dk])solvedByDate[dk]={physics:0,chemistry:0,maths:0}; solvedByDate[dk][subj]++; } var inCur=(state.period==='all')?(t==null?true:t<=range.end.getTime()):(t!=null&&t>=range.start.getTime()&&t<=range.end.getTime()); if(inCur){ list.push(q); addStats(subj,elo); } else if(range.prevStart&&t!=null&&t>=range.prevStart.getTime()&&t<=range.prevEnd.getTime())prevCount++; }
+  var dates=allDailyDates(),fg=FG(),cumNow=fg?fg.cum('physics'):0;
+  for(var di=0;di<dates.length;di++){ var dk=dates[di]; var ms=new Date(dk+'T12:00:00').getTime(); if(isNaN(ms))continue; if(ms<range.start.getTime()||ms>range.end.getTime())continue; var counts=dailyCounts(dk),solved=solvedByDate[dk]||{physics:0,chemistry:0,maths:0},isToday=dk===todayISO(); ['physics','chemistry','maths'].forEach(function(subj){ var extra=Math.max(0,(counts[subj]||0)-(solved[subj]||0)); for(var n=0;n<extra;n++){ var e2=1000+Math.floor(hash(dk.length+n*7+3,subj.length*3+n*11+1)*800); list.push({subject:subj,qElo:e2,lastReviewedAt:dk+'T12:00:00',status:'solved',synthetic:true,difficulty:0.5,growSeconds:10800,plantCumStudy:isToday?cumNow:(cumNow-10800)}); addStats(subj,e2); } }); }
+  if(range.prevStart){ var pdates=allDailyDates(); for(var pi=0;pi<pdates.length;pi++){ var pdk=pdates[pi]; var pms=new Date(pdk+'T12:00:00').getTime(); if(isNaN(pms)||pms<range.prevStart.getTime()||pms>range.prevEnd.getTime())continue; var pc=dailyCounts(pdk),ps=solvedByDate[pdk]||{physics:0,chemistry:0,maths:0}; prevCount+=Math.max(0,(pc.physics||0)-(ps.physics||0))+Math.max(0,(pc.chemistry||0)-(ps.chemistry||0))+Math.max(0,(pc.maths||0)-(ps.maths||0)); } }
   list.sort(function(a,b){ return (getTimeMs(a)||0)-(getTimeMs(b)||0); });
   var delta=range.prevStart?(list.length-prevCount):0;
   return {list:list,stats:{count:list.length,delta:delta,bySubject:bySubject,oaks:oaks,maxElo:maxElo,avgElo:list.length?Math.round(eloSum/list.length):0}};
@@ -1578,55 +1534,33 @@ function buildTerrain(){
   dry.sort(function(a,b){ return Math.hypot(a.x,a.z)-Math.hypot(b.x,b.z); });
   return dry;
 }
-function buildTrees(samples,drySpots){
-  if(!samples.length||!drySpots.length) return [];
-  var minDist=samples.length>1800?1.05:samples.length>900?1.25:samples.length>300?1.50:1.80;
-  var cell=Math.max(1.0,minDist), grid={};
-  function key(x,z){ return Math.floor(x/cell)+','+Math.floor(z/cell); }
-  function tooClose(x,z){ var cx=Math.floor(x/cell),cz=Math.floor(z/cell),md2=minDist*minDist; for(var dx=-1;dx<=1;dx++)for(var dz=-1;dz<=1;dz++){ var arr=grid[(cx+dx)+','+(cz+dz)]; if(!arr) continue; for(var i=0;i<arr.length;i++){ var a=arr[i].x-x,b=arr[i].z-z; if(a*a+b*b<md2) return true; } } return false; }
-  function addG(x,z){ var k=key(x,z); if(!grid[k]) grid[k]=[]; grid[k].push({x:x,z:z}); }
-  var placed=[],cursor=0,fg=FG();
-  for(var i=0;i<samples.length;i++){
-    var q=samples[i], qElo=qEloOf(q), oak=qElo>=2300, kind=oak?'oak':normSub(q.subject), spot=null;
-    for(var tries=0;tries<700;tries++){
-      var idx=(cursor+tries)%drySpots.length, s=drySpots[idx], x=s.x+(hash(i+tries,5)-0.5)*0.7, z=s.z+(hash(i+tries,6)-0.5)*0.7, y=heightAt(x,z);
-      if(y<0.28) continue;
-      if(tooClose(x,z)) continue;
-      spot={x:x,y:y,z:z}; cursor=(idx+1)%drySpots.length; break;
-    }
-    if(!spot){ var fs=drySpots[cursor%drySpots.length]; spot={x:fs.x,y:fs.y,z:fs.z}; cursor=(cursor+1)%drySpots.length; }
-    addG(spot.x,spot.z);
-    var diff=(q.difficulty!=null)?q.difficulty:(fg?fg.difficultyOf(qElo,kind):0.5);
-    var growSec=q.growSeconds||10800;
-    var plantCum=(q.plantCumStudy!=null)?q.plantCumStudy:((fg?fg.cum(kind):0)-growSec);
-    var mat=fg?fg.maturity(plantCum,growSec,kind):1;
-    var sizeF=fg?fg.sizeFactor(diff):1;
-    var heightF=fg?fg.heightFactor(mat):1;
-    var base=(0.75+Math.min(1,Math.max(0,(qElo-800)/2200))*0.85)*(oak?0.9:1)*(0.85+hash(i,7)*0.3)*sizeF*heightF;
-    placed.push({kind:kind,oak:oak,qElo:qElo,x:spot.x,y:spot.y,z:spot.z,baseScale:base,sy:0.85+hash(i,11)*0.45,sxz:0.90+hash(i,13)*0.25,leanX:(hash(i,17)-0.5)*0.08,leanZ:(hash(i,19)-0.5)*0.08,rot:hash(i,3)*6.283});
+function buildTrees(samples,drySpots){ if(!samples.length||!drySpots.length)return []; var minDist=samples.length>1800?1.05:samples.length>900?1.25:samples.length>300?1.50:1.80; var cell=Math.max(1.0,minDist),grid={}; function key(x,z){ return Math.floor(x/cell)+','+Math.floor(z/cell); } function tooClose(x,z){ var cx=Math.floor(x/cell),cz=Math.floor(z/cell),md2=minDist*minDist; for(var dx=-1;dx<=1;dx++)for(var dz=-1;dz<=1;dz++){ var arr=grid[(cx+dx)+','+(cz+dz)]; if(!arr)continue; for(var i=0;i<arr.length;i++){ var a=arr[i].x-x,b=arr[i].z-z; if(a*a+b*b<md2)return true; } } return false; } function addG(x,z){ var k=key(x,z); if(!grid[k])grid[k]=[]; grid[k].push({x:x,z:z}); } var placed=[],cursor=0,fg=FG();
+  for(var i=0;i<samples.length;i++){ var q=samples[i],qElo=qEloOf(q),oak=qElo>=2300,kind=oak?'oak':normSub(q.subject),spot=null; for(var tries=0;tries<700;tries++){ var idx=(cursor+tries)%drySpots.length,s=drySpots[idx],x=s.x+(hash(i+tries,5)-0.5)*0.7,z=s.z+(hash(i+tries,6)-0.5)*0.7,y=heightAt(x,z); if(y<0.28)continue; if(tooClose(x,z))continue; spot={x:x,y:y,z:z}; cursor=(idx+1)%drySpots.length; break; } if(!spot){ var fs=drySpots[cursor%drySpots.length]; spot={x:fs.x,y:fs.y,z:fs.z}; cursor=(cursor+1)%drySpots.length; } addG(spot.x,spot.z); var diff=(q.difficulty!=null)?q.difficulty:(fg?fg.difficultyOf(qElo,kind):0.5); var growSec=q.growSeconds||10800; var plantCum=(q.plantCumStudy!=null)?q.plantCumStudy:((fg?fg.cum(kind):0)-growSec); var mat=fg?fg.maturity(plantCum,growSec,kind):1; var sizeF=fg?fg.sizeFactor(diff):1; var heightF=fg?fg.heightFactor(mat):1; var base=(0.75+Math.min(1,Math.max(0,(qElo-800)/2200))*0.85)*(oak?0.9:1)*(0.85+hash(i,7)*0.3)*sizeF*heightF; placed.push({kind:kind,oak:oak,qElo:qElo,x:spot.x,y:spot.y,z:spot.z,baseScale:base,sy:0.85+hash(i,11)*0.45,sxz:0.90+hash(i,13)*0.25,leanX:(hash(i,17)-0.5)*0.08,leanZ:(hash(i,19)-0.5)*0.08,rot:hash(i,3)*6.283}); }
+  var meshMap = {};
+
+for(var k in byKind){
+  var arr=byKind[k];
+  if(!arr.length) continue;
+
+  var mesh=new THREE.InstancedMesh(treeGeos[k],treeMat,arr.length);
+  mesh.frustumCulled=false;
+
+  for(var j=0;j<arr.length;j++){
+    var t=arr[j], sc=Math.max(0.0001,t.baseScale);
+    dummy.position.set(t.x,t.y-0.06,t.z);
+    dummy.rotation.set(t.leanX,t.rot,t.leanZ);
+    dummy.scale.set(t.sxz*sc,t.sy*sc,t.sxz*sc);
+    dummy.updateMatrix();
+    mesh.setMatrixAt(j,dummy.matrix);
   }
-  var byKind={physics:[],chemistry:[],maths:[],oak:[]};
-  placed.forEach(function(t){ byKind[t.kind].push(t); });
-  var dummy=new THREE.Object3D();
-  var meshMap={};
-  for(var k in byKind){
-    var arr=byKind[k];
-    if(!arr.length) continue;
-    var mesh=new THREE.InstancedMesh(treeGeos[k],treeMat,arr.length);
-    mesh.frustumCulled=false;
-    for(var j=0;j<arr.length;j++){
-      var t=arr[j], sc=Math.max(0.0001,t.baseScale);
-      dummy.position.set(t.x,t.y-0.06,t.z);
-      dummy.rotation.set(t.leanX,t.rot,t.leanZ);
-      dummy.scale.set(t.sxz*sc,t.sy*sc,t.sxz*sc);
-      dummy.updateMatrix();
-      mesh.setMatrixAt(j,dummy.matrix);
-    }
-    mesh.instanceMatrix.needsUpdate=true;
-    world.add(mesh);
-    meshMap[k]=mesh;
-  }
-  world.userData.treeMeshes=meshMap;
+
+  mesh.instanceMatrix.needsUpdate=true;
+  world.add(mesh);
+  meshMap[k] = mesh;
+}
+
+world.userData.treeMeshes = meshMap; placed.forEach(function(t){ byKind[t.kind].push(t); }); var dummy=new THREE.Object3D();
+  for(var k in byKind){ var arr=byKind[k]; if(!arr.length)continue; var mesh=new THREE.InstancedMesh(treeGeos[k],treeMat,arr.length); mesh.frustumCulled=false; for(var j=0;j<arr.length;j++){ var t=arr[j],sc=Math.max(0.0001,t.baseScale); dummy.position.set(t.x,t.y-0.06,t.z); dummy.rotation.set(t.leanX,t.rot,t.leanZ); dummy.scale.set(t.sxz*sc,t.sy*sc,t.sxz*sc); dummy.updateMatrix(); mesh.setMatrixAt(j,dummy.matrix); } mesh.instanceMatrix.needsUpdate=true; world.add(mesh); }
   return placed;
 }
 function buildSceneFromList(list){ clearWorld(); LAND_R=radiusFor(list.length); var dry=buildTerrain(); _lastPlaced=buildTrees(sampleList(list),dry);

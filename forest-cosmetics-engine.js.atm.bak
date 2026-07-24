@@ -1,0 +1,1386 @@
+/* ============================================================================
+forest-cosmetics-engine.js
+Real procedural cosmetics engine:
+- tree geometry swaps
+- particle systems
+- atmosphere profiles
+- structure meshes
+- scatter + simple life
+Works with:
+- window.__forestIslandAPI (preview island)
+- window.__forestFullAdopt (full island)
+============================================================================ */
+(function () {
+'use strict';
+
+if (window.__forestCosmeticsEngineInit) return;
+window.__forestCosmeticsEngineInit = true;
+
+var KEY = 'jeemax_island_cosmetics_v1';
+
+/* ---------------- helpers ---------------- */
+function rand(a, b) { return a + Math.random() * (b - a); }
+function clamp01(v) { return v < 0 ? 0 : v > 1 ? 1 : v; }
+function lerp(a, b, t) { return a + (b - a) * t; }
+function lerp3(a, b, t) {
+  return [
+    a[0] + (b[0] - a[0]) * t,
+    a[1] + (b[1] - a[1]) * t,
+    a[2] + (b[2] - a[2]) * t
+  ];
+}
+function nightNow() {
+  var d = new Date();
+  var t = (d.getHours() + d.getMinutes() / 60) / 24;
+  return clamp01(Math.abs(t - 0.5) * 2);
+}
+
+/* ---------------- profiles ---------------- */
+var SKY = {
+  day:     { top: '#4a7ec0', bot: '#c4dcec', water: '#23a7d6' },
+  dusk:    { top: '#3a2a52', bot: '#e07a44', water: '#3a4a6a' },
+  sakura:  { top: '#3a2030', bot: '#ffb0d0', water: '#7a5a7a' },
+  ember:   { top: '#2a0e0e', bot: '#ff7a1a', water: '#5a2a1a' },
+  frost:   { top: '#1a2a44', bot: '#9fe8ff', water: '#5a86a8' },
+  aurora:  { top: '#041018', bot: '#123f3a', water: '#1a5a5a' }
+};
+
+var LIGHT = {
+  natural: { sun: '#fff2e0', sunI: 1.10, hemi: '#8aa0b8', hemiI: 0.72, amb: '#ffffff', ambI: 0.12, exp: 1.10 },
+  dusk:    { sun: '#ffb27a', sunI: 0.82, hemi: '#6a5a7a', hemiI: 0.55, amb: '#ffd9b0', ambI: 0.10, exp: 1.05 },
+  sakura:  { sun: '#ffd0e6', sunI: 0.95, hemi: '#b08aa0', hemiI: 0.65, amb: '#ffe9f4', ambI: 0.14, exp: 1.08 },
+  ember:   { sun: '#ff8a4a', sunI: 0.90, hemi: '#8a5a3a', hemiI: 0.50, amb: '#ff9a5a', ambI: 0.12, exp: 1.04 },
+  frost:   { sun: '#dff2ff', sunI: 1.00, hemi: '#7aa0c0', hemiI: 0.70, amb: '#eaffff', ambI: 0.16, exp: 1.08 },
+  aurora:  { sun: '#9fffcf', sunI: 0.75, hemi: '#4a8a7a', hemiI: 0.60, amb: '#9fffcf', ambI: 0.14, exp: 1.06 }
+};
+
+var FOG = {
+  natural: { color: '#0b1020', density: 0.006 },
+  dusk:    { color: '#241826', density: 0.008 },
+  sakura:  { color: '#2a1820', density: 0.008 },
+  ember:   { color: '#1a0e08', density: 0.012 },
+  frost:   { color: '#182430', density: 0.010 },
+  aurora:  { color: '#081818', density: 0.007 }
+};
+
+var PARTICLE_MAP = {
+  pollen: 'pollen',
+  petals: 'sakura',
+  snowp: 'snow',
+  embers: 'embers',
+  flies: 'fireflies',
+  fireflies: 'fireflies',
+  sakura: 'sakura',
+  snow: 'snow',
+  aurora: 'aurora',
+  crystal: 'crystal'
+};
+
+/* ---------------- palettes ---------------- */
+var SUBJECT_PAL = {
+  physics:   { trunk: [0.30,0.20,0.12], base: [0.02,0.46,0.58], top: [0.12,0.76,0.92] },
+  chemistry: { trunk: [0.32,0.21,0.12], base: [0.05,0.55,0.10], top: [0.24,0.92,0.26] },
+  maths:     { trunk: [0.32,0.20,0.11], base: [0.85,0.46,0.02], top: [1.00,0.84,0.12] },
+  oak:       { trunk: [0.16,0.11,0.07], base: [0.06,0.16,0.05], top: [0.15,0.34,0.11] }
+};
+
+function stylizePalette(p, style) {
+  if (style === 'sakura') {
+    return {
+      trunk: p.trunk,
+      base: lerp3(p.base, [1.00, 0.45, 0.65], 0.62),
+      top:  lerp3(p.top,  [1.00, 0.78, 0.90], 0.72)
+    };
+  }
+  if (style === 'charred') {
+    return {
+      trunk: lerp3(p.trunk, [0.06,0.05,0.05], 0.75),
+      base: lerp3(p.base, [0.10,0.07,0.07], 0.72),
+      top:  lerp3(p.top,  [1.00,0.32,0.04], 0.55)
+    };
+  }
+  if (style === 'frosted') {
+    return {
+      trunk: p.trunk,
+      base: lerp3(p.base, [0.55,0.75,0.90], 0.35),
+      top:  lerp3(p.top,  [0.94,0.98,1.00], 0.68)
+    };
+  }
+  if (style === 'crystal') {
+    return {
+      trunk: lerp3(p.trunk, [0.15,0.20,0.30], 0.35),
+      base: lerp3(p.base, [0.30,0.90,1.00], 0.55),
+      top:  lerp3(p.top,  [0.70,0.50,1.00], 0.62)
+    };
+  }
+  return p;
+}
+
+/* ---------------- geometry utils ---------------- */
+function nonidx(g) { return g.index ? g.toNonIndexed() : g; }
+
+function paint(T, g, c) {
+  g = nonidx(g);
+  if (g.attributes.uv) g.deleteAttribute('uv');
+  var n = g.attributes.position.count;
+  var arr = new Float32Array(n * 3);
+  for (var i = 0; i < n; i++) {
+    arr[i*3] = c[0]; arr[i*3+1] = c[1]; arr[i*3+2] = c[2];
+  }
+  g.setAttribute('color', new T.BufferAttribute(arr, 3));
+  return g;
+}
+
+function paintGrad(T, g, base, top) {
+  g = nonidx(g);
+  if (g.attributes.uv) g.deleteAttribute('uv');
+
+  var p = g.attributes.position;
+  var n = p.count;
+  var ymin = 1e9, ymax = -1e9;
+
+  for (var i = 0; i < n; i++) {
+    var y = p.getY(i);
+    if (y < ymin) ymin = y;
+    if (y > ymax) ymax = y;
+  }
+
+  var arr = new Float32Array(n * 3);
+
+  for (var j = 0; j < n; j++) {
+    var t = (p.getY(j) - ymin) / Math.max(0.001, ymax - ymin);
+    arr[j*3]   = base[0] + (top[0] - base[0]) * t;
+    arr[j*3+1] = base[1] + (top[1] - base[1]) * t;
+    arr[j*3+2] = base[2] + (top[2] - base[2]) * t;
+  }
+
+  g.setAttribute('color', new T.BufferAttribute(arr, 3));
+  return g;
+}
+
+function mergeGeos(T, list) {
+  list = list.map(function (g) { return nonidx(g); });
+
+  var n = 0;
+  list.forEach(function (g) { n += g.attributes.position.count; });
+
+  var pos = new Float32Array(n * 3);
+  var nor = new Float32Array(n * 3);
+  var col = new Float32Array(n * 3);
+  var o = 0;
+
+  list.forEach(function (g) {
+    var c = g.attributes.position.count;
+    pos.set(g.attributes.position.array, o * 3);
+    if (g.attributes.normal) nor.set(g.attributes.normal.array, o * 3);
+    if (g.attributes.color) col.set(g.attributes.color.array, o * 3);
+    o += c;
+  });
+
+  var g = new T.BufferGeometry();
+  g.setAttribute('position', new T.BufferAttribute(pos, 3));
+  g.setAttribute('normal', new T.BufferAttribute(nor, 3));
+  g.setAttribute('color', new T.BufferAttribute(col, 3));
+  return g;
+}
+
+/* ---------------- tree builders ---------------- */
+function pineGeo(T, pal, large) {
+  var h = large ? 2.3 : 1.0;
+  var rb = large ? 0.42 : 0.16;
+  var rt = large ? 0.22 : 0.09;
+
+  var trunk = paint(T, new T.CylinderGeometry(rb, rt, h, 6).translate(0, h/2, 0), pal.trunk);
+  var parts = [trunk];
+
+  var layers = large ? 4 : 3;
+  var r = large ? 1.55 : 0.78;
+  var y = large ? 3.0 : 1.35;
+
+  for (var i = 0; i < layers; i++) {
+    var cone = new T.ConeGeometry(r - i * (large ? 0.28 : 0.17), large ? 1.35 : 1.12, large ? 8 : 7);
+    cone.translate(0, y + i * (large ? 0.72 : 0.60), 0);
+    parts.push(paintGrad(T, cone, pal.base, pal.top));
+  }
+
+  return mergeGeos(T, parts);
+}
+
+function sakuraGeo(T, pal, large) {
+  var h = large ? 2.2 : 1.0;
+  var trunk = paint(T, new T.CylinderGeometry(large ? 0.36 : 0.16, large ? 0.24 : 0.11, h, 6).translate(0, h/2, 0), pal.trunk);
+
+  var b1 = new T.IcosahedronGeometry(large ? 1.45 : 0.78, 1).translate(0, large ? 2.9 : 1.55, 0);
+  var b2 = new T.IcosahedronGeometry(large ? 1.05 : 0.55, 1).translate(large ? 0.75 : 0.35, large ? 3.5 : 2.0, large ? 0.35 : 0.1);
+  var b3 = new T.IcosahedronGeometry(large ? 0.95 : 0.48, 1).translate(large ? -0.7 : -0.3, large ? 3.35 : 1.9, large ? -0.3 : -0.12);
+
+  return mergeGeos(T, [
+    trunk,
+    paintGrad(T, b1, pal.base, pal.top),
+    paintGrad(T, b2, pal.base, pal.top),
+    paintGrad(T, b3, pal.base, pal.top)
+  ]);
+}
+
+function charredGeo(T, pal, large) {
+  var h = large ? 2.4 : 1.1;
+  var trunk = paint(T, new T.CylinderGeometry(large ? 0.38 : 0.16, large ? 0.26 : 0.10, h, 6).translate(0, h/2, 0), pal.trunk);
+
+  var s1 = new T.ConeGeometry(large ? 0.72 : 0.34, large ? 2.2 : 1.1, 5).translate(0, large ? 2.7 : 1.35, 0);
+  var s2 = new T.ConeGeometry(large ? 0.52 : 0.26, large ? 1.7 : 0.9, 5).translate(large ? 0.45 : 0.22, large ? 3.1 : 1.7, 0);
+  var s3 = new T.ConeGeometry(large ? 0.42 : 0.20, large ? 1.3 : 0.7, 5).translate(large ? -0.4 : -0.18, large ? 2.9 : 1.55, 0);
+
+  return mergeGeos(T, [
+    trunk,
+    paintGrad(T, s1, pal.base, pal.top),
+    paintGrad(T, s2, pal.base, pal.top),
+    paintGrad(T, s3, pal.base, pal.top)
+  ]);
+}
+
+function frostedGeo(T, pal, large) {
+  return pineGeo(T, pal, large);
+}
+
+function crystalGeo(T, pal, large) {
+  var h = large ? 2.1 : 1.0;
+  var trunk = paint(T, new T.CylinderGeometry(large ? 0.32 : 0.14, large ? 0.22 : 0.10, h, 6).translate(0, h/2, 0), pal.trunk);
+
+  var c1 = new T.OctahedronGeometry(large ? 1.15 : 0.62, 0).translate(0, large ? 2.8 : 1.5, 0);
+  var c2 = new T.OctahedronGeometry(large ? 0.8 : 0.42, 0).translate(large ? 0.65 : 0.3, large ? 3.2 : 1.85, 0);
+  var c3 = new T.DodecahedronGeometry(large ? 0.72 : 0.38, 0).translate(large ? -0.55 : -0.26, large ? 3.0 : 1.7, 0);
+
+  return mergeGeos(T, [
+    trunk,
+    paintGrad(T, c1, pal.base, pal.top),
+    paintGrad(T, c2, pal.base, pal.top),
+    paintGrad(T, c3, pal.base, pal.top)
+  ]);
+}
+
+function buildTreeGeo(T, style, subj) {
+  var large = subj === 'oak';
+  var pal = stylizePalette(SUBJECT_PAL[subj] || SUBJECT_PAL.physics, style);
+
+  if (style === 'sakura') return sakuraGeo(T, pal, large);
+  if (style === 'charred') return charredGeo(T, pal, large);
+  if (style === 'frosted') return frostedGeo(T, pal, large);
+  if (style === 'crystal') return crystalGeo(T, pal, large);
+
+  return pineGeo(T, pal, large);
+}
+
+/* ---------------- glow texture ---------------- */
+var _glow = null;
+function glowTex(T) {
+  if (_glow && _glow.__T === T) return _glow;
+
+  var c = document.createElement('canvas');
+  c.width = c.height = 64;
+  var g = c.getContext('2d');
+  var r = g.createRadialGradient(32,32,0,32,32,32);
+  r.addColorStop(0, 'rgba(255,255,255,1)');
+  r.addColorStop(0.35, 'rgba(255,255,255,.75)');
+  r.addColorStop(1, 'rgba(255,255,255,0)');
+  g.fillStyle = r;
+  g.fillRect(0,0,64,64);
+
+  var t = new T.CanvasTexture(c);
+  try { t.colorSpace = T.SRGBColorSpace; } catch (e) {}
+  t.__T = T;
+  _glow = t;
+  return t;
+}
+
+/* ---------------- particles ---------------- */
+function createAurora(T) {
+  var group = new T.Group();
+  var ribbons = [];
+
+  for (var r = 0; r < 3; r++) {
+    var geo = new T.PlaneGeometry(38, 5, 60, 1);
+    geo.translate(0, 13 + r * 2.2, -6 - r * 3);
+
+    var p = geo.attributes.position;
+    var colors = new Float32Array(p.count * 3);
+    var col = new T.Color();
+
+    for (var i = 0; i < p.count; i++) {
+      var x = p.getX(i);
+      col.setHSL(0.35 + 0.16 * Math.sin(x * 0.16 + r), 0.85, 0.60);
+      colors[i*3] = col.r;
+      colors[i*3+1] = col.g;
+      colors[i*3+2] = col.b;
+    }
+
+    geo.setAttribute('color', new T.BufferAttribute(colors, 3));
+
+    var mat = new T.MeshBasicMaterial({
+      vertexColors: true,
+      transparent: true,
+      opacity: 0.16,
+      side: T.DoubleSide,
+      blending: T.AdditiveBlending,
+      depthWrite: false
+    });
+
+    var mesh = new T.Mesh(geo, mat);
+    mesh.rotation.x = -0.25;
+    group.add(mesh);
+
+    ribbons.push({
+      mesh: mesh,
+      base: geo.attributes.position.array.slice(0),
+      mat: mat
+    });
+  }
+
+  return {
+    object: group,
+    update: function (el) {
+      for (var i = 0; i < ribbons.length; i++) {
+        var rb = ribbons[i];
+        var arr = rb.mesh.geometry.attributes.position.array;
+        var base = rb.base;
+
+        for (var j = 0; j < arr.length; j += 3) {
+          var x = base[j];
+          arr[j + 1] = base[j + 1] + Math.sin(el * 0.5 + x * 0.18 + i) * 1.1;
+          arr[j + 2] = base[j + 2] + Math.cos(el * 0.35 + x * 0.12 + i) * 0.8;
+        }
+
+        rb.mesh.geometry.attributes.position.needsUpdate = true;
+        rb.mat.opacity = 0.12 + 0.08 * Math.sin(el * 0.7 + i);
+      }
+    }
+  };
+}
+
+function createParticles(T, type) {
+  type = PARTICLE_MAP[type] || 'pollen';
+
+  if (type === 'aurora') return createAurora(T);
+
+  var cfg = {
+    pollen:    { n: 50, size: 0.14, cols: ['#ffe9a3','#d9ffd0','#bff7ff'], beh: 'drift' },
+    sakura:    { n: 70, size: 0.18, cols: ['#ff7ab8','#ffd0e6','#fff0f8'], beh: 'fall' },
+    snow:      { n: 80, size: 0.16, cols: ['#ffffff','#cfe8ff','#eaffff'], beh: 'fall' },
+    embers:    { n: 60, size: 0.16, cols: ['#ff7a1a','#ffd24a','#fff3b0'], beh: 'rise' },
+    fireflies: { n: 40, size: 0.16, cols: ['#fff3b0','#9fffcf','#d9fff0'], beh: 'blink' },
+    crystal:   { n: 45, size: 0.18, cols: ['#7af0ff','#b388ff','#9fffcf'], beh: 'drift' }
+  }[type] || { n: 50, size: 0.14, cols: ['#ffffff'], beh: 'drift' };
+
+  var N = cfg.n;
+  var pos = new Float32Array(N * 3);
+  var col = new Float32Array(N * 3);
+  var base = [];
+
+  for (var i = 0; i < N; i++) {
+    var x = rand(-12, 12);
+    var y = rand(0.4, 8.0);
+    var z = rand(-12, 12);
+
+    base.push({ x: x, y: y, z: z, ph: rand(0, 6.28), sp: rand(0.25, 0.9) });
+
+    var c = new T.Color(cfg.cols[(Math.random() * cfg.cols.length) | 0]);
+    pos[i*3] = x;
+    pos[i*3+1] = y;
+    pos[i*3+2] = z;
+    col[i*3] = c.r;
+    col[i*3+1] = c.g;
+    col[i*3+2] = c.b;
+  }
+
+  var geo = new T.BufferGeometry();
+  geo.setAttribute('position', new T.BufferAttribute(pos, 3));
+  geo.setAttribute('color', new T.BufferAttribute(col, 3));
+
+  var mat = new T.PointsMaterial({
+    size: cfg.size,
+    map: glowTex(T),
+    transparent: true,
+    opacity: 0.85,
+    depthWrite: false,
+    blending: T.AdditiveBlending,
+    vertexColors: true,
+    sizeAttenuation: true
+  });
+
+  var pts = new T.Points(geo, mat);
+  pts.frustumCulled = false;
+
+  return {
+    object: pts,
+    update: function (el, dt) {
+      var arr = geo.attributes.position.array;
+
+      for (var i = 0; i < N; i++) {
+        var b = base[i];
+
+        if (cfg.beh === 'fall') {
+          arr[i*3]   = b.x + Math.sin(el * b.sp + b.ph) * 0.8;
+          arr[i*3+1] = 7.5 - ((b.y + el * b.sp * 1.15) % 7.5);
+          arr[i*3+2] = b.z + Math.cos(el * b.sp * 0.8 + b.ph) * 0.8;
+        } else if (cfg.beh === 'rise') {
+          arr[i*3]   = b.x + Math.sin(el * b.sp + b.ph) * 0.5;
+          arr[i*3+1] = 0.3 + ((b.y + el * b.sp * 1.35) % 7.0);
+          arr[i*3+2] = b.z + Math.cos(el * b.sp + b.ph) * 0.5;
+        } else if (cfg.beh === 'blink') {
+          arr[i*3]   = b.x + Math.sin(el * b.sp + b.ph) * 0.6;
+          arr[i*3+1] = b.y + Math.sin(el * b.sp * 1.2 + b.ph) * 0.5;
+          arr[i*3+2] = b.z + Math.cos(el * b.sp * 0.9 + b.ph) * 0.6;
+          mat.opacity = 0.25 + 0.75 * Math.max(0, Math.sin(el * 1.5 + b.ph * 3));
+        } else {
+          arr[i*3]   = b.x + Math.sin(el * b.sp + b.ph) * 0.8;
+          arr[i*3+1] = b.y + Math.sin(el * b.sp * 0.7 + b.ph) * 0.6;
+          arr[i*3+2] = b.z + Math.cos(el * b.sp * 0.8 + b.ph) * 0.8;
+        }
+      }
+
+      geo.attributes.position.needsUpdate = true;
+    }
+  };
+}
+
+/* ---------------- scatter ---------------- */
+function createScatter(T, scatter, spots, heightAt) {
+  if (!spots || !spots.length) return null;
+
+  var defs = {
+    meadow:  { n: 140, size: 0.16, cols: ['#4cc9ff','#39d98a','#ffb224','#ff7ab8','#fff3b0'], glow: false },
+    leaves:  { n: 120, size: 0.18, cols: ['#ff9a3c','#e0532a','#ffd24a'], glow: false },
+    mushroom:{ n: 80,  size: 0.22, cols: ['#ff5e7e','#7af0c0','#ffd24a'], glow: true },
+    snow:    { n: 150, size: 0.20, cols: ['#ffffff','#cfe8ff'], glow: false },
+    crystal: { n: 70,  size: 0.26, cols: ['#7af0ff','#b388ff','#9fffcf'], glow: true },
+    cinder:  { n: 110, size: 0.18, cols: ['#ff7a1a','#ffd24a'], glow: true }
+  };
+
+  var d = defs[scatter] || defs.meadow;
+  var N = Math.min(d.n, spots.length * 2);
+
+  var pos = new Float32Array(N * 3);
+  var col = new Float32Array(N * 3);
+  var n = 0;
+
+  for (var i = 0; i < spots.length * 3 && n < N; i++) {
+    var s = spots[i % spots.length];
+    var x = s.x + rand(-0.55, 0.55);
+    var z = s.z + rand(-0.55, 0.55);
+    var y = heightAt ? heightAt(x, z) : s.y;
+
+    pos[n*3] = x;
+    pos[n*3+1] = y + 0.06;
+    pos[n*3+2] = z;
+
+    var c = new T.Color(d.cols[(Math.random() * d.cols.length) | 0]);
+    col[n*3] = c.r;
+    col[n*3+1] = c.g;
+    col[n*3+2] = c.b;
+
+    n++;
+  }
+
+  var geo = new T.BufferGeometry();
+  geo.setAttribute('position', new T.BufferAttribute(pos, 3));
+  geo.setAttribute('color', new T.BufferAttribute(col, 3));
+
+  var mat = new T.PointsMaterial({
+    size: d.size,
+    map: glowTex(T),
+    transparent: true,
+    opacity: d.glow ? 0.82 : 0.58,
+    depthWrite: false,
+    blending: T.AdditiveBlending,
+    vertexColors: true,
+    sizeAttenuation: true
+  });
+
+  var pts = new T.Points(geo, mat);
+  pts.frustumCulled = false;
+
+  return {
+    object: pts,
+    update: function (el) {
+      mat.opacity = (d.glow ? 0.75 : 0.52) + 0.14 * Math.sin(el * 2.1);
+    }
+  };
+}
+
+/* ---------------- creatures ---------------- */
+function createCreatures(T, kind, heightAt) {
+  var defs = {
+    cnone: null,
+    none: null,
+    koi:       { n: 6, size: 0.18, color: '#ff7a3c', beh: 'koi' },
+    birds:     { n: 5, size: 0.22, color: '#cfe8ff', beh: 'bird' },
+    butterfly: { n: 8, size: 0.16, color: '#ff7ab8', beh: 'fly' },
+    fox:       { n: 3, size: 0.20, color: '#ff9a4a', beh: 'fox' }
+  };
+
+  var d = defs[kind] || null;
+  if (!d) return null;
+
+  var N = d.n;
+  var pos = new Float32Array(N * 3);
+  var col = new Float32Array(N * 3);
+  var c = new T.Color(d.color);
+
+  for (var i = 0; i < N; i++) {
+    col[i*3] = c.r;
+    col[i*3+1] = c.g;
+    col[i*3+2] = c.b;
+  }
+
+  var geo = new T.BufferGeometry();
+  geo.setAttribute('position', new T.BufferAttribute(pos, 3));
+  geo.setAttribute('color', new T.BufferAttribute(col, 3));
+
+  var mat = new T.PointsMaterial({
+    size: d.size,
+    map: glowTex(T),
+    transparent: true,
+    opacity: 0.92,
+    depthWrite: false,
+    blending: T.AdditiveBlending,
+    vertexColors: true,
+    sizeAttenuation: true
+  });
+
+  var pts = new T.Points(geo, mat);
+  pts.frustumCulled = false;
+
+  return {
+    object: pts,
+    update: function (el) {
+      var arr = geo.attributes.position.array;
+
+      for (var i = 0; i < N; i++) {
+        var a = el * (d.beh === 'bird' ? 0.5 : 0.8) + i * 2.1;
+
+        if (d.beh === 'koi') {
+          var kr = 3.2 + (i % 3) * 1.1;
+          arr[i*3] = Math.cos(a) * kr;
+          arr[i*3+1] = -0.04;
+          arr[i*3+2] = Math.sin(a) * kr;
+        } else if (d.beh === 'bird') {
+          var br = 6.5 + (i % 4) * 1.4;
+          arr[i*3] = Math.cos(a * 0.7) * br;
+          arr[i*3+1] = 4.6 + Math.sin(a * 1.3 + i) * 1.1;
+          arr[i*3+2] = Math.sin(a * 0.7) * br;
+        } else if (d.beh === 'fox') {
+          var fr = 2.2 + Math.sin(el * 0.3 + i) * 1.2;
+          var fx = Math.cos(a * 0.4 + i) * fr;
+          var fz = Math.sin(a * 0.4 + i) * fr;
+          arr[i*3] = fx;
+          arr[i*3+1] = heightAt ? Math.max(0.25, heightAt(fx, fz) + 0.28) : 0.28;
+          arr[i*3+2] = fz;
+        } else {
+          arr[i*3] = Math.cos(a) * (2.0 + i * 0.35) + Math.sin(el * 2 + i) * 0.4;
+          arr[i*3+1] = 0.75 + Math.sin(el * 3 + i) * 0.35;
+          arr[i*3+2] = Math.sin(a) * (2.0 + i * 0.35);
+        }
+      }
+
+      geo.attributes.position.needsUpdate = true;
+      if (d.beh === 'fly') mat.opacity = 0.72 + 0.22 * Math.sin(el * 3);
+    }
+  };
+}
+
+/* ---------------- structures ---------------- */
+function disc(T, color, opacity, radius) {
+  var m = new T.Mesh(
+    new T.CircleGeometry(radius || 0.8, 24),
+    new T.MeshBasicMaterial({
+      map: glowTex(T),
+      color: color,
+      transparent: true,
+      opacity: opacity,
+      blending: T.AdditiveBlending,
+      depthWrite: false
+    })
+  );
+  m.rotation.x = -Math.PI / 2;
+  m.position.y = 0.05;
+  return m;
+}
+
+function buildStructure(T, id) {
+  var g = new T.Group();
+
+  var stone = new T.MeshStandardMaterial({ color: 0x7a7f88, roughness: 1, flatShading: true });
+  var darkStone = new T.MeshStandardMaterial({ color: 0x20242c, roughness: 1, flatShading: true });
+  var wood = new T.MeshStandardMaterial({ color: 0x5a3a22, roughness: 1, flatShading: true });
+  var red = new T.MeshStandardMaterial({ color: 0xb03030, roughness: 1, flatShading: true });
+  var metal = new T.MeshStandardMaterial({ color: 0x9aa3b5, roughness: 0.35, metalness: 0.65, flatShading: true });
+
+  function glow(color, opacity) {
+    return new T.MeshBasicMaterial({
+      color: color,
+      transparent: true,
+      opacity: opacity,
+      blending: T.AdditiveBlending,
+      depthWrite: false
+    });
+  }
+
+  if (id === 'campfire') {
+    for (var i = 0; i < 9; i++) {
+      var a = i / 9 * 6.283;
+      var s = new T.Mesh(new T.IcosahedronGeometry(rand(0.14, 0.24), 0), stone);
+      s.position.set(Math.cos(a) * rand(0.5, 0.66), rand(0.04, 0.12), Math.sin(a) * rand(0.5, 0.66));
+      s.rotation.set(rand(0,3), rand(0,3), rand(0,3));
+      g.add(s);
+    }
+
+    for (var k = 0; k < 3; k++) {
+      var lg = new T.CylinderGeometry(0.05, 0.07, 0.8, 6);
+      lg.rotateZ(Math.PI / 2);
+      var l = new T.Mesh(lg, wood);
+      l.rotation.y = k * 1.05;
+      l.position.y = 0.08 + k * 0.02;
+      g.add(l);
+    }
+
+    var f1 = new T.Mesh(new T.ConeGeometry(0.20, 0.72, 7), glow(0xff7a1a, 0.9));
+    f1.position.y = 0.44;
+    g.add(f1);
+
+    var f2 = new T.Mesh(new T.ConeGeometry(0.12, 0.50, 7), glow(0xffd24a, 0.95));
+    f2.position.y = 0.52;
+    g.add(f2);
+
+    g.add(disc(T, 0xff8a3c, 0.42, 0.95));
+
+    var L = new T.PointLight(0xff8a3c, 1.2, 18, 2);
+    L.position.y = 0.85;
+    g.add(L);
+
+    g.userData = { flame: f1, flame2: f2, light: L, baseI: 1.2 };
+    return g;
+  }
+
+  if (id === 'lanterns' || id === 'spiritlamps') {
+    var post = new T.Mesh(new T.CylinderGeometry(0.035, 0.05, 0.95, 6), wood);
+    post.position.y = 0.47;
+    g.add(post);
+
+    var lamp = new T.Mesh(new T.OctahedronGeometry(0.13, 0), glow(id === 'spiritlamps' ? 0x9fffcf : 0xffd24a, 0.92));
+    lamp.position.y = 0.95;
+    g.add(lamp);
+
+    g.add(disc(T, id === 'spiritlamps' ? 0x9fffcf : 0xffb24a, 0.30, 0.45));
+
+    var LL = new T.PointLight(id === 'spiritlamps' ? 0x9fffcf : 0xffb24a, 0.9, 9, 2);
+    LL.position.y = 0.95;
+    g.add(LL);
+
+    g.userData = { light: LL, orb: lamp, baseI: 0.9 };
+    return g;
+  }
+
+  if (id === 'well') {
+    var base = new T.Mesh(new T.CylinderGeometry(0.42, 0.48, 0.4, 12), stone);
+    base.position.y = 0.2;
+    g.add(base);
+
+    var water = new T.Mesh(new T.CircleGeometry(0.34, 16), glow(0x2a6a8a, 0.82));
+    water.rotation.x = -Math.PI / 2;
+    water.position.y = 0.38;
+    g.add(water);
+
+    var pm = wood;
+    for (var s = -1; s <= 1; s += 2) {
+      var p = new T.Mesh(new T.CylinderGeometry(0.035, 0.04, 0.9, 6), pm);
+      p.position.set(s * 0.4, 0.7, 0);
+      g.add(p);
+    }
+
+    var roof = new T.Mesh(new T.ConeGeometry(0.62, 0.34, 4), new T.MeshStandardMaterial({ color: 0x6a3a26, roughness: 1, flatShading: true }));
+    roof.rotation.y = Math.PI / 4;
+    roof.position.y = 1.3;
+    g.add(roof);
+
+    g.add(disc(T, 0x66ccff, 0.20, 0.55));
+
+    var WL = new T.PointLight(0x66ccff, 0.55, 8, 2);
+    WL.position.y = 0.75;
+    g.add(WL);
+
+    g.userData = { light: WL, baseI: 0.55 };
+    return g;
+  }
+
+  if (id === 'shrine' || id === 'torii') {
+    if (id === 'torii') {
+      for (var ts = -1; ts <= 1; ts += 2) {
+        var tp = new T.Mesh(new T.CylinderGeometry(0.09, 0.11, 2.2, 8), red);
+        tp.position.set(ts * 0.8, 1.1, 0);
+        g.add(tp);
+      }
+
+      var top = new T.Mesh(new T.BoxGeometry(2.2, 0.16, 0.3), red);
+      top.position.y = 2.2;
+      g.add(top);
+
+      var beam = new T.Mesh(new T.BoxGeometry(1.8, 0.10, 0.18), red);
+      beam.position.y = 1.8;
+      g.add(beam);
+
+      var lantern = new T.Mesh(new T.OctahedronGeometry(0.10, 0), glow(0xffb24a, 0.92));
+      lantern.position.y = 1.55;
+      g.add(lantern);
+
+      g.add(disc(T, 0xff6a4a, 0.22, 0.75));
+
+      var TL = new T.PointLight(0xffb24a, 0.7, 10, 2);
+      TL.position.y = 1.55;
+      g.add(TL);
+
+      g.userData = { light: TL, orb: lantern, baseI: 0.7 };
+      return g;
+    }
+
+    var st = stone;
+    var step1 = new T.Mesh(new T.BoxGeometry(1.1, 0.12, 0.7), st);
+    step1.position.y = 0.06;
+    g.add(step1);
+
+    var step2 = new T.Mesh(new T.BoxGeometry(0.9, 0.12, 0.55), st);
+    step2.position.y = 0.18;
+    g.add(step2);
+
+    for (var ps = -1; ps <= 1; ps += 2) {
+      var pp = new T.Mesh(new T.CylinderGeometry(0.06, 0.07, 1.1, 8), red);
+      pp.position.set(ps * 0.42, 0.78, 0);
+      g.add(pp);
+    }
+
+    var stop = new T.Mesh(new T.BoxGeometry(1.15, 0.10, 0.16), red);
+    stop.position.y = 1.34;
+    g.add(stop);
+
+    var orb = new T.Mesh(new T.IcosahedronGeometry(0.13, 1), glow(0x9fffcf, 0.9));
+    orb.position.y = 0.88;
+    g.add(orb);
+
+    g.add(disc(T, 0x9fffcf, 0.24, 0.70));
+
+    var SL = new T.PointLight(0x9fffcf, 0.8, 9, 2);
+    SL.position.y = 0.9;
+    g.add(SL);
+
+    g.userData = { light: SL, orb: orb, baseI: 0.8 };
+    return g;
+  }
+
+  if (id === 'totem') {
+    var b1 = new T.Mesh(new T.CylinderGeometry(0.28, 0.34, 0.7, 7), stone);
+    b1.position.y = 0.35;
+    g.add(b1);
+
+    var b2 = new T.Mesh(new T.BoxGeometry(0.48, 0.55, 0.42), darkStone);
+    b2.position.y = 0.95;
+    g.add(b2);
+
+    var b3 = new T.Mesh(new T.BoxGeometry(0.38, 0.45, 0.36), stone);
+    b3.position.y = 1.45;
+    g.add(b3);
+
+    var eyeMat = glow(0xff7a1a, 0.95);
+    for (var es = -1; es <= 1; es += 2) {
+      var eye = new T.Mesh(new T.SphereGeometry(0.045, 6, 5), eyeMat);
+      eye.position.set(es * 0.10, 1.50, 0.18);
+      g.add(eye);
+    }
+
+    var crown = new T.Mesh(new T.ConeGeometry(0.24, 0.45, 5), wood);
+    crown.position.y = 1.90;
+    g.add(crown);
+
+    g.add(disc(T, 0xff7a1a, 0.22, 0.7));
+
+    var TotemL = new T.PointLight(0xff7a1a, 0.75, 10, 2);
+    TotemL.position.y = 1.35;
+    g.add(TotemL);
+
+    g.userData = { light: TotemL, baseI: 0.75 };
+    return g;
+  }
+
+  if (id === 'runestone') {
+    var monolith = new T.Mesh(new T.BoxGeometry(0.7, 2.2, 0.5), darkStone);
+    monolith.position.y = 1.1;
+    g.add(monolith);
+
+    var runeMat = glow(0x4cc9ff, 0.95);
+    for (var ri = 0; ri < 4; ri++) {
+      var rune = new T.Mesh(new T.PlaneGeometry(0.08, 0.34), runeMat);
+      rune.position.set((ri % 2 ? 0.14 : -0.14), 0.7 + ri * 0.32, 0.26);
+      g.add(rune);
+    }
+
+    g.add(disc(T, 0x4cc9ff, 0.25, 0.75));
+
+    var RL = new T.PointLight(0x4cc9ff, 0.8, 10, 2);
+    RL.position.y = 1.2;
+    g.add(RL);
+
+    g.userData = { light: RL, baseI: 0.8 };
+    return g;
+  }
+
+  if (id === 'cybershrine') {
+    var pillarMat = metal;
+
+    for (var cs = -1; cs <= 1; cs += 2) {
+      var cp = new T.Mesh(new T.BoxGeometry(0.12, 2.0, 0.12), pillarMat);
+      cp.position.set(cs * 0.75, 1.0, 0);
+      g.add(cp);
+    }
+
+    var ring = new T.Mesh(new T.TorusGeometry(0.65, 0.06, 8, 24), glow(0x4cc9ff, 0.9));
+    ring.position.y = 1.75;
+    g.add(ring);
+
+    var holo = new T.Mesh(new T.IcosahedronGeometry(0.18, 1), glow(0x9fffcf, 0.9));
+    holo.position.y = 1.15;
+    g.add(holo);
+
+    var neonMat = glow(0x4cc9ff, 0.8);
+    for (var nb = 0; nb < 3; nb++) {
+      var neon = new T.Mesh(new T.BoxGeometry(1.5, 0.03, 0.03), neonMat);
+      neon.position.y = 0.35 + nb * 0.65;
+      g.add(neon);
+    }
+
+    g.add(disc(T, 0x4cc9ff, 0.24, 0.85));
+
+    var CL = new T.PointLight(0x4cc9ff, 0.9, 12, 2);
+    CL.position.y = 1.3;
+    g.add(CL);
+
+    g.userData = { light: CL, orb: holo, baseI: 0.9 };
+    return g;
+  }
+
+  if (id === 'spire') {
+    var s1 = new T.Mesh(new T.ConeGeometry(0.42, 2.3, 5), darkStone);
+    s1.position.y = 1.15;
+    g.add(s1);
+
+    var s2 = new T.Mesh(new T.ConeGeometry(0.26, 1.5, 5), darkStone);
+    s2.position.set(0.42, 0.75, 0.1);
+    g.add(s2);
+
+    var s3 = new T.Mesh(new T.ConeGeometry(0.20, 1.1, 5), darkStone);
+    s3.position.set(-0.38, 0.55, -0.12);
+    g.add(s3);
+
+    var crackMat = glow(0xff7a1a, 0.9);
+    for (var ci = 0; ci < 3; ci++) {
+      var crack = new T.Mesh(new T.BoxGeometry(0.03, 0.45, 0.03), crackMat);
+      crack.position.set(rand(-0.15, 0.15), 0.7 + ci * 0.45, 0.22);
+      crack.rotation.z = rand(-0.4, 0.4);
+      g.add(crack);
+    }
+
+    g.add(disc(T, 0xff7a1a, 0.26, 0.85));
+
+    var SPL = new T.PointLight(0xff7a1a, 0.85, 12, 2);
+    SPL.position.y = 1.2;
+    g.add(SPL);
+
+    g.userData = { light: SPL, baseI: 0.85 };
+    return g;
+  }
+
+  // fallback
+  return buildStructure(T, 'campfire');
+}
+
+function flattenTrees(trees) {
+  var out = [];
+  if (!trees) return out;
+
+  for (var k in trees) {
+    if (Object.prototype.hasOwnProperty.call(trees, k)) {
+      out = out.concat(trees[k] || []);
+    }
+  }
+
+  return out;
+}
+
+function findStructSpots(spots, placed, count) {
+  var out = [];
+  if (!spots || !spots.length) {
+    for (var f = 0; f < count; f++) out.push({ x: (f - 1) * 2.2, y: 0, z: 0 });
+    return out;
+  }
+
+  placed = placed || [];
+
+  function clear(x, z, rad) {
+    for (var i = 0; i < placed.length; i++) {
+      var dx = placed[i].x - x;
+      var dz = placed[i].z - z;
+      if (dx * dx + dz * dz < rad * rad) return false;
+    }
+    for (var j = 0; j < out.length; j++) {
+      var ox = out[j].x - x;
+      var oz = out[j].z - z;
+      if (ox * ox + oz * oz < 4.8) return false;
+    }
+    return true;
+  }
+
+  for (var pass = 0; pass < 3 && out.length < count; pass++) {
+    var rad = 2.4 * (pass === 0 ? 1 : pass === 1 ? 0.8 : 0.6);
+
+    for (var i = 0; i < spots.length && out.length < count; i++) {
+      var s = spots[i];
+      var d = Math.hypot(s.x, s.z);
+      if (d < 1.4 || d > 7.0) continue;
+      if (!clear(s.x, s.z, rad)) continue;
+      out.push({ x: s.x, y: s.y, z: s.z });
+    }
+  }
+
+  while (out.length < count) {
+    var idx = out.length;
+    var a = idx * 2.4;
+    var p = spots[idx % spots.length] || { x: 0, y: 0, z: 0 };
+    out.push({ x: p.x + Math.cos(a), y: p.y, z: p.z + Math.sin(a) });
+  }
+
+  return out;
+}
+
+/* ---------------- atmosphere ---------------- */
+function makeAtmosphere(T, cfg) {
+  var sky = SKY[cfg.skyType] || SKY.day;
+  var light = LIGHT[cfg.lightProfile] || LIGHT.natural;
+  var fog = FOG[cfg.fogProfile] || FOG.natural;
+
+  return {
+    top: new T.Color(sky.top),
+    bot: new T.Color(sky.bot),
+    water: new T.Color(sky.water),
+    sun: new T.Color(light.sun),
+    sunI: light.sunI,
+    hemi: new T.Color(light.hemi),
+    hemiI: light.hemiI,
+    amb: new T.Color(light.amb),
+    ambI: light.ambI,
+    fog: new T.Color(fog.color),
+    fogD: fog.density,
+    exp: light.exp
+  };
+}
+
+function applyAtmosphere(ctx, atm, k) {
+  if (!ctx || !ctx.scene) return;
+
+  var T = ctx.THREE;
+
+  if (!ctx.scene.fog) {
+    ctx.scene.fog = new T.FogExp2(atm.fog.getHex(), atm.fogD);
+  }
+
+  if (!ctx.scene.userData.__cosAmbient) {
+    var amb = new T.AmbientLight(atm.amb.getHex(), atm.ambI);
+    ctx.scene.add(amb);
+    ctx.scene.userData.__cosAmbient = amb;
+  }
+
+  var amb2 = ctx.scene.userData.__cosAmbient;
+
+  if (ctx.env) {
+    if (ctx.env.skyTop) ctx.env.skyTop.lerp(atm.top, k);
+    if (ctx.env.skyBot) ctx.env.skyBot.lerp(atm.bot, k);
+    if (ctx.env.sun) {
+      ctx.env.sun.color.lerp(atm.sun, k);
+      ctx.env.sun.intensity = lerp(ctx.env.sun.intensity, atm.sunI, k);
+    }
+    if (ctx.env.hemi) {
+      ctx.env.hemi.color.lerp(atm.hemi, k);
+      ctx.env.hemi.intensity = lerp(ctx.env.hemi.intensity, atm.hemiI, k);
+    }
+    if (ctx.env.water && ctx.env.water.material) {
+      ctx.env.water.material.color.lerp(atm.water, k);
+    }
+    if (ctx.env.fog) {
+      ctx.env.fog.color.lerp(atm.fog, k);
+      if ('density' in ctx.env.fog) ctx.env.fog.density = lerp(ctx.env.fog.density, atm.fogD, k);
+    }
+  }
+
+  if (ctx.scene.fog) {
+    ctx.scene.fog.color.lerp(atm.fog, k);
+    if ('density' in ctx.scene.fog) ctx.scene.fog.density = lerp(ctx.scene.fog.density, atm.fogD, k);
+  }
+
+  if (amb2) {
+    amb2.color.lerp(atm.amb, k);
+    amb2.intensity = lerp(amb2.intensity, atm.ambI, k);
+  }
+
+  if (ctx.renderer && ctx.renderer.toneMappingExposure != null) {
+    ctx.renderer.toneMappingExposure = lerp(ctx.renderer.toneMappingExposure, atm.exp, k);
+  }
+}
+
+/* ---------------- engine ---------------- */
+function Engine(provider, isFull) {
+  this.provider = provider;
+  this.isFull = !!isFull;
+  this.layer = null;
+  this.particle = null;
+  this.scatter = null;
+  this.creature = null;
+  this.pulse = [];
+  this.atm = null;
+  this.cfg = null;
+  this.lastWorld = null;
+}
+
+Engine.prototype.getRoot = function (ctx) {
+  return ctx.world || ctx.scene;
+};
+
+Engine.prototype.clear = function (ctx) {
+  if (!ctx) return;
+
+  if (this.layer) {
+    ctx.scene.remove(this.layer);
+
+    this.layer.traverse(function (o) {
+      if (o.geometry) o.geometry.dispose();
+      if (o.material) {
+        if (Array.isArray(o.material)) o.material.forEach(function (m) { m.dispose(); });
+        else o.material.dispose();
+      }
+    });
+
+    this.layer = null;
+  }
+
+  this.particle = null;
+  this.scatter = null;
+  this.creature = null;
+  this.pulse = [];
+
+  var root = this.getRoot(ctx);
+  var custom = root.userData.__customTreeGeos || [];
+
+  custom.forEach(function (g) {
+    if (g && g.dispose) g.dispose();
+  });
+
+  root.userData.__customTreeGeos = [];
+
+  var orig = root.userData.__origTreeGeos;
+  if (orig && ctx.meshes) {
+    for (var k in ctx.meshes) {
+      if (ctx.meshes[k] && orig[k]) {
+        ctx.meshes[k].geometry = orig[k];
+      }
+    }
+  }
+};
+
+Engine.prototype.applyTrees = function (ctx, style) {
+  if (!ctx.meshes) return;
+
+  var T = ctx.THREE;
+  var root = this.getRoot(ctx);
+
+  if (!root.userData.__origTreeGeos) {
+    root.userData.__origTreeGeos = {};
+
+    for (var k in ctx.meshes) {
+      if (ctx.meshes[k]) root.userData.__origTreeGeos[k] = ctx.meshes[k].geometry;
+    }
+  }
+
+  if (!root.userData.__customTreeGeos) root.userData.__customTreeGeos = [];
+
+  var orig = root.userData.__origTreeGeos;
+  var custom = root.userData.__customTreeGeos;
+
+  for (var subj in ctx.meshes) {
+    var mesh = ctx.meshes[subj];
+    if (!mesh) continue;
+
+    var geo;
+
+    if (!style || style === 'pine') {
+      geo = orig[subj] || mesh.geometry;
+    } else {
+      geo = buildTreeGeo(T, style, subj);
+      custom.push(geo);
+    }
+
+    if (mesh.geometry !== geo) {
+      mesh.geometry = geo;
+    }
+  }
+};
+
+Engine.prototype.buildStructures = function (ctx, id) {
+  var T = ctx.THREE;
+
+  var spots = ctx.api
+    ? (ctx.api.drySpots || [])
+    : ((ctx.world && ctx.world.userData.drySpots) || []);
+
+  var placed = ctx.api
+    ? flattenTrees(ctx.api.trees)
+    : ((ctx.world && ctx.world.userData.placed) || []);
+
+  var meta = {
+    campfire: 1,
+    lanterns: 4,
+    spiritlamps: 3,
+    well: 1,
+    shrine: 1,
+    torii: 1,
+    totem: 1,
+    runestone: 2,
+    cybershrine: 1,
+    spire: 2
+  };
+
+  var count = meta[id] || 1;
+  var spotsFound = findStructSpots(spots, placed, count);
+
+  for (var i = 0; i < spotsFound.length; i++) {
+    var s = spotsFound[i];
+    var g = buildStructure(T, id);
+
+    g.position.set(s.x, s.y, s.z);
+    g.rotation.y = rand(0, 6.28);
+
+    this.layer.add(g);
+
+    if (g.userData && (g.userData.light || g.userData.orb || g.userData.flame)) {
+      this.pulse.push(g.userData);
+    }
+  }
+};
+
+Engine.prototype.refresh = function () {
+  var ctx = this.provider();
+  if (!ctx || !ctx.scene || !ctx.THREE) return;
+  this.clear(ctx);
+  var cfg = readCfg();
+  this.cfg = cfg;
+  var T = ctx.THREE;
+
+  this.applyTrees(ctx, cfg.treeStyle);
+
+  // Avoid duplicating particles / structures / atmosphere in the full island,
+  // because forest-island-full.js already renders its own premium juice.
+  var skipFx = this.isFull && window.__forestIslandFullCosmetics;
+
+  if (!skipFx) {
+    this.atm = makeAtmosphere(T, cfg);
+    applyAtmosphere(ctx, this.atm, 1);
+
+    this.layer = new T.Group();
+    ctx.scene.add(this.layer);
+
+    this.particle = createParticles(T, cfg.particleSystem);
+    if (this.particle && this.particle.object) this.layer.add(this.particle.object);
+
+    var spots = ctx.api
+      ? (ctx.api.drySpots || [])
+      : ((ctx.world && ctx.world.userData.drySpots) || []);
+
+    this.scatter = createScatter(T, cfg.scatter, spots, ctx.heightAt);
+    if (this.scatter && this.scatter.object) this.layer.add(this.scatter.object);
+
+    this.creature = createCreatures(T, cfg.creature, ctx.heightAt);
+    if (this.creature && this.creature.object) this.layer.add(this.creature.object);
+
+    this.buildStructures(ctx, cfg.structure);
+  } else {
+    this.atm = null;
+    this.layer = null;
+    this.particle = null;
+    this.scatter = null;
+    this.creature = null;
+    this.pulse = [];
+  }
+
+  this.lastWorld = ctx.world ? ctx.world.uuid : null;
+};
+Engine.prototype.frame = function (el, dt) {
+  var ctx = this.provider();
+  if (!ctx || !ctx.scene) return;
+
+  if (this.isFull) {
+    if (!ctx.world) return;
+
+    if (ctx.world.uuid !== this.lastWorld) {
+      this.refresh();
+      return;
+    }
+  }
+
+  if (this.atm) applyAtmosphere(ctx, this.atm, Math.min(1, dt * 1.5));
+
+  if (this.particle && this.particle.update) this.particle.update(el, dt);
+  if (this.scatter && this.scatter.update) this.scatter.update(el, dt);
+  if (this.creature && this.creature.update) this.creature.update(el, dt);
+
+  var night = nightNow();
+
+  for (var i = 0; i < this.pulse.length; i++) {
+    var u = this.pulse[i];
+
+    if (u.light) {
+      var fl = 0.7 + 0.45 * Math.abs(Math.sin(el * 10 + i));
+      u.light.intensity = (u.baseI || 1.0) * fl * (0.65 + night * 0.85);
+    }
+
+    if (u.flame) {
+      u.flame.scale.set(
+        0.8 + 0.2 * Math.sin(el * 11 + i),
+        0.9 + 0.35 * Math.abs(Math.sin(el * 8 + i)),
+        0.8 + 0.2 * Math.cos(el * 10 + i)
+      );
+      u.flame.rotation.y = el * 0.7;
+    }
+
+    if (u.flame2) {
+      u.flame2.scale.set(
+        0.7 + 0.2 * Math.sin(el * 13 + i),
+        0.8 + 0.3 * Math.abs(Math.sin(el * 9 + i)),
+        0.7 + 0.2 * Math.cos(el * 12 + i)
+      );
+    }
+
+    if (u.orb) {
+      u.orb.scale.setScalar(1 + 0.12 * Math.sin(el * 2 + i));
+    }
+  }
+};
+
+/* ---------------- config ---------------- */
+function readCfg() {
+  var o = null;
+
+  try {
+    o = JSON.parse(localStorage.getItem(KEY) || 'null');
+  } catch (e) {
+    o = null;
+  }
+
+  var c = (o && o.equipped) ? o.equipped : o;
+
+  c = c || {};
+
+  var biome = c.biome || 'meadow';
+  var pack = window.__islandCosmeticPacks && window.__islandCosmeticPacks[biome]
+    ? window.__islandCosmeticPacks[biome]
+    : null;
+
+  return {
+    biome: biome,
+    treeStyle: c.treeStyle || (pack ? pack.treeStyle : 'pine'),
+    particleSystem: c.particleSystem || c.particles || (pack ? pack.particleSystem : 'pollen'),
+    skyType: c.skyType || (pack ? pack.skyType : 'day'),
+    lightProfile: c.lightProfile || (pack ? pack.lightProfile : 'natural'),
+    fogProfile: c.fogProfile || (pack ? pack.fogProfile : 'natural'),
+    structure: c.structure || (pack ? pack.structure : 'campfire'),
+    scatter: c.scatter || (pack ? pack.scatter : 'meadow'),
+    creature: c.creature || (pack ? pack.creature : 'cnone'),
+    aura: c.aura || (pack ? pack.aura : 'none'),
+    tint: c.tint || (pack ? pack.tint : 'natural')
+  };
+}
+
+/* ---------------- context providers ---------------- */
+function previewContext(api) {
+  return {
+    THREE: api.THREE,
+    scene: api.scene,
+    renderer: api.renderer,
+    meshes: api.meshes,
+    trees: api.trees,
+    heightAt: api.heightAt,
+    api: api,
+    env: {
+      water: api.env ? api.env.water : null,
+      sun: api.env ? api.env.sun : null,
+      hemi: api.env ? api.env.hemi : null,
+      skyTop: api.env ? api.env.skyTop : null,
+      skyBot: api.env ? api.env.skyBot : null,
+      fog: api.scene ? api.scene.fog : null
+    },
+    isFull: false
+  };
+}
+
+/* ---------------- boot ---------------- */
+var previewEngine = null;
+var fullEngine = null;
+
+function attachPreview() {
+  if (previewEngine) return;
+
+  var api = window.__forestIslandAPI;
+  if (!api || !api.THREE || !api.scene) return;
+
+  previewEngine = new Engine(function () {
+    return previewContext(api);
+  }, false);
+
+  api.onFrame.push(function (el, dt) {
+    if (previewEngine) previewEngine.frame(el, dt);
+  });
+
+  previewEngine.refresh();
+}
+
+function attachFull() {
+  if (fullEngine) return;
+
+  var adopt = window.__forestFullAdopt;
+  if (!adopt) return;
+
+  var ctx = adopt();
+  if (!ctx || !ctx.THREE || !ctx.scene) return;
+
+  fullEngine = new Engine(function () {
+    return window.__forestFullAdopt ? window.__forestFullAdopt() : null;
+  }, true);
+
+  ctx.onFrame.push(function (el, dt) {
+    if (fullEngine) fullEngine.frame(el, dt);
+  });
+
+  fullEngine.refresh();
+}
+
+function loop() {
+  try {
+    attachPreview();
+    attachFull();
+  } catch (e) {}
+
+  setTimeout(loop, 500);
+}
+
+window.addEventListener('storage', function (e) {
+  if (!e.key || e.key === KEY) {
+    if (previewEngine) previewEngine.refresh();
+    if (fullEngine) fullEngine.refresh();
+  }
+});
+
+loop();
+
+})();

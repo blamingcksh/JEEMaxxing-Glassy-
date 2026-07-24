@@ -89,7 +89,7 @@ if (eq && eq.trees && !eq.aura) {
 
 /* normalize slot IDs */
 if (eq) {
-  ['aura', 'treeStyle', 'scatter', 'particles', 'structure', 'creature', 'tint'].forEach(function (k) {
+  ['aura', 'scatter', 'particles', 'structure', 'creature', 'tint'].forEach(function (k) {
     if (eq[k]) eq[k] = mapCosmeticId(k, eq[k]);
   });
 }
@@ -117,29 +117,29 @@ var PRICE={common:3,uncommon:6,rare:12,epic:25,legendary:50};
 var TIER_W={ bronze:[60,30,10,0,0], silver:[30,40,25,5,0], gold:[10,30,40,18,2], obsidian:[5,15,35,30,15] };
 var TIER_SHARD={bronze:1,silver:2,gold:3,obsidian:5};
 var CAT=[
-{id:'none',slot:'aura',rar:'common',name:'No Aura',color:null,emoji:'·'},
-{id:'verdant',slot:'aura',rar:'common',name:'Verdant',color:'#39d98a',emoji:'🍃'},
-{id:'cyan',slot:'aura',rar:'uncommon',name:'Aether',color:'#4cc9ff',emoji:'💠'},
-{id:'gold',slot:'aura',rar:'uncommon',name:'Goldcrown',color:'#ffd24a',emoji:'👑'},
-{id:'blossom',slot:'aura',rar:'rare',name:'Blossom',color:'#ff7ab8',emoji:'🌸'},
-{id:'violet',slot:'aura',rar:'rare',name:'Mystic',color:'#a78bfa',emoji:'🔮'},
-{id:'ember',slot:'aura',rar:'epic',name:'Ember',color:'#ff7a1a',emoji:'🔥'},
-{id:'frost',slot:'aura',rar:'epic',name:'Frost',color:'#9fe8ff',emoji:'❄️'},
-{id:'meadow',slot:'scatter',rar:'common',name:'Wildflowers',emoji:'🌼'},
-{id:'leaves',slot:'scatter',rar:'common',name:'Fallen Leaves',emoji:'🍂'},
-{id:'mushroom',slot:'scatter',rar:'uncommon',name:'Glowcaps',emoji:'🍄'},
-{id:'snow',slot:'scatter',rar:'uncommon',name:'Snowdrift',emoji:'🌨️'},
-{id:'crystal',slot:'scatter',rar:'rare',name:'Crystals',emoji:'💎'},
-{id:'cinder',slot:'scatter',rar:'rare',name:'Cinderbed',emoji:'🔥'},
-{id:'pollen',slot:'particles',rar:'common',name:'Pollen',emoji:'✨'},
-{id:'petals',slot:'particles',rar:'uncommon',name:'Petals',emoji:'🌸'},
-{id:'snowp',slot:'particles',rar:'uncommon',name:'Snowfall',emoji:'❄️'},
-{id:'embers',slot:'particles',rar:'rare',name:'Embers',emoji:'🔥'},
-{id:'flies',slot:'particles',rar:'epic',name:'Fireflies',emoji:'🪲'},
-{id:'campfire',slot:'structure',rar:'common',name:'Campfire',emoji:'🔥'},
-{id:'lanterns',slot:'structure',rar:'uncommon',name:'Lanterns',emoji:'🏮'},
-{id:'well',slot:'structure',rar:'rare',name:'Wishing Well',emoji:'⛲'},
-{id:'shrine',slot:'structure',rar:'epic',name:'Shrine',emoji:'⛩️'},
+ {id:'none',slot:'aura',rar:'common',name:'No Aura',color:null,emoji:'·'},
+ {id:'verdant',slot:'aura',rar:'common',name:'Verdant',color:'#39d98a',emoji:'🍃'},
+ {id:'cyan',slot:'aura',rar:'uncommon',name:'Aether',color:'#4cc9ff',emoji:'💠'},
+ {id:'gold',slot:'aura',rar:'uncommon',name:'Goldcrown',color:'#ffd24a',emoji:'👑'},
+ {id:'blossom',slot:'aura',rar:'rare',name:'Blossom',color:'#ff7ab8',emoji:'🌸'},
+ {id:'violet',slot:'aura',rar:'rare',name:'Mystic',color:'#a78bfa',emoji:'🔮'},
+ {id:'ember',slot:'aura',rar:'epic',name:'Ember',color:'#ff7a1a',emoji:'🔥'},
+ {id:'frost',slot:'aura',rar:'epic',name:'Frost',color:'#9fe8ff',emoji:'❄️'},
+ {id:'meadow',slot:'scatter',rar:'common',name:'Wildflowers',emoji:'🌼'},
+ {id:'leaves',slot:'scatter',rar:'common',name:'Fallen Leaves',emoji:'🍂'},
+ {id:'mushroom',slot:'scatter',rar:'uncommon',name:'Glowcaps',emoji:'🍄'},
+ {id:'snow',slot:'scatter',rar:'uncommon',name:'Snowdrift',emoji:'🌨️'},
+ {id:'crystal',slot:'scatter',rar:'rare',name:'Crystals',emoji:'💎'},
+ {id:'cinder',slot:'scatter',rar:'rare',name:'Cinderbed',emoji:'🔥'},
+ {id:'pollen',slot:'particles',rar:'common',name:'Pollen',emoji:'✨'},
+ {id:'petals',slot:'particles',rar:'uncommon',name:'Petals',emoji:'🌸'},
+ {id:'snowp',slot:'particles',rar:'uncommon',name:'Snowfall',emoji:'❄️'},
+ {id:'embers',slot:'particles',rar:'rare',name:'Embers',emoji:'🔥'},
+ {id:'flies',slot:'particles',rar:'epic',name:'Fireflies',emoji:'🪲'},
+ {id:'campfire',slot:'structure',rar:'common',name:'Campfire',emoji:'🔥'},
+ {id:'lanterns',slot:'structure',rar:'uncommon',name:'Lanterns',emoji:'🏮'},
+ {id:'well',slot:'structure',rar:'rare',name:'Wishing Well',emoji:'⛲'},
+ {id:'shrine',slot:'structure',rar:'epic',name:'Shrine',emoji:'⛩️'},
 {id:'torii',slot:'structure',rar:'epic',name:'Torii Gate',emoji:'⛩️'},
 {id:'koistones',slot:'structure',rar:'uncommon',name:'Koi Stones',emoji:'🪨'},
 {id:'arch',slot:'structure',rar:'rare',name:'Moon Arch',emoji:'🌙'},
@@ -150,21 +150,22 @@ var CAT=[
 {id:'runestone',slot:'structure',rar:'rare',name:'Rune Stone',emoji:'🪨'},
 {id:'cybershrine',slot:'structure',rar:'legendary',name:'Cyber Shrine',emoji:'🛐'},
 {id:'spire',slot:'structure',rar:'epic',name:'Obsidian Spire',emoji:'🌋'},
+
 {id:'pine',slot:'treeStyle',rar:'common',name:'Pine',emoji:'🌲'},
 {id:'sakura',slot:'treeStyle',rar:'legendary',name:'Sakura',emoji:'🌸'},
 {id:'charred',slot:'treeStyle',rar:'epic',name:'Charred',emoji:'🔥'},
 {id:'frosted',slot:'treeStyle',rar:'epic',name:'Frosted',emoji:'❄️'},
 {id:'crystal',slot:'treeStyle',rar:'legendary',name:'Crystal',emoji:'💎'},
-{id:'cnone',slot:'creature',rar:'common',name:'None',emoji:'·'},
-{id:'koi',slot:'creature',rar:'uncommon',name:'Koi',emoji:'🐟'},
-{id:'birds',slot:'creature',rar:'uncommon',name:'Birds',emoji:'🐦'},
-{id:'butterfly',slot:'creature',rar:'rare',name:'Butterflies',emoji:'🦋'},
-{id:'fox',slot:'creature',rar:'epic',name:'Spirit Fox',emoji:'🦊'},
-{id:'natural',slot:'tint',rar:'common',name:'Natural',emoji:'☀️'},
-{id:'golden',slot:'tint',rar:'uncommon',name:'Golden Hour',emoji:'🌅'},
-{id:'moon',slot:'tint',rar:'uncommon',name:'Moonlit',emoji:'🌙'},
-{id:'ember2',slot:'tint',rar:'rare',name:'Emberglow',emoji:'🔥'},
-{id:'frost2',slot:'tint',rar:'rare',name:'Frostlight',emoji:'❄️'}
+ {id:'cnone',slot:'creature',rar:'common',name:'None',emoji:'·'},
+ {id:'koi',slot:'creature',rar:'uncommon',name:'Koi',emoji:'🐟'},
+ {id:'birds',slot:'creature',rar:'uncommon',name:'Birds',emoji:'🐦'},
+ {id:'butterfly',slot:'creature',rar:'rare',name:'Butterflies',emoji:'🦋'},
+ {id:'fox',slot:'creature',rar:'epic',name:'Spirit Fox',emoji:'🦊'},
+ {id:'natural',slot:'tint',rar:'common',name:'Natural',emoji:'☀️'},
+ {id:'golden',slot:'tint',rar:'uncommon',name:'Golden Hour',emoji:'🌅'},
+ {id:'moon',slot:'tint',rar:'uncommon',name:'Moonlit',emoji:'🌙'},
+ {id:'ember2',slot:'tint',rar:'rare',name:'Emberglow',emoji:'🔥'},
+ {id:'frost2',slot:'tint',rar:'rare',name:'Frostlight',emoji:'❄️'}
 ];
 var BIOMES=[
  {id:'meadow',rar:'common',name:'Meadow',emoji:'🌿',set:{aura:'none',scatter:'meadow',particles:'pollen',structure:'campfire',creature:'cnone',tint:'natural'}},
@@ -186,15 +187,15 @@ var SLOTS=[
 ];
 
 var STUDIO_TABS=[
-['biomes','🌍 Biomes'],
-['aura','🌳 Aura'],
-['treeStyle','🌲 Foliage'],
-['scatter','🌼 Ground'],
-['particles','✨ Sky & FX'],
-['structure','🏕️ Structures'],
-['creature','🦊 Life'],
-['tint','☀️ Light']
+  ['biomes','🌍 Biomes'],
+  ['aura','🌳 Aura'],
+  ['scatter','🌼 Ground'],
+  ['particles','✨ Sky & FX'],
+  ['structure','🏕️ Structures'],
+  ['creature','🦊 Life'],
+  ['tint','☀️ Light']
 ];
+
 var studioTab='biomes';
 var previewRaf = null, previewParts = [], previewPartType = null;
 /* ── biome / tint mood system ── */
@@ -289,7 +290,6 @@ var BIOME_PACKS = {
     tint: 'moon'
   }
 };
-window.__islandCosmeticPacks = BIOME_PACKS;
 function computeMood(e){
   e = e || eq;
   if (e.biome && BIOME_MOODS[e.biome]) return BIOME_MOODS[e.biome];
@@ -1296,14 +1296,15 @@ function renderRail(){ buildRail(); if(!rail) return;
   document.body.classList.remove('debt-smoulder','debt-critical','debt-default','debt-clean'); if(dtier!=='zero') document.body.classList.add('debt-'+dtier);
   var tr=totalRolls();
   rail.innerHTML =
-  '<span class="ac-chip ac-debt '+dtier+'" data-act="debt">🔥 Debt <b>'+debt+'</b></span>'+
-  (coll ? '<span class="ac-chip ac-coll" data-act="coll">⚖ <b>'+coll.stake+'</b> at risk</span>' : '<span class="ac-chip" data-act="coll" style="border-color:rgba(251,191,36,.3);color:#fde68a">⚖ Pledge</span>')+
-  '<span class="ac-chip ac-roll'+(tr>0?' hot':'')+'" data-act="roll">🎲 <b>'+tr+'</b></span>'+
-  '<span class="ac-chip ac-shard" data-act="shard">🪙 <b>'+shards+'</b></span>'+
-  (buff>0?'<span class="ac-chip ac-buff">⚡ Surge <b>×'+buff+'</b></span>':'')+
-  '<span class="ac-chip ac-stamp" data-act="stamp">🎖 Stamps</span>'+
-  '<span class="ac-chip" data-act="studio" style="border-color:rgba(61,220,255,.3);color:#a5ecff">🎨 Studio</span>';
+    '<span class="ac-chip ac-debt '+dtier+'" data-act="debt">🔥 Debt <b>'+debt+'</b></span>'+
+    (coll?'<span class="ac-chip ac-coll" data-act="coll">⚖ <b>'+coll.stake+'</b> at risk</span>':'<span class="ac-chip" data-act="coll" style="border-color:rgba(251,191,36,.3);color:#fde68a">⚖ Pledge</span>')+
+    '<span class="ac-chip ac-roll'+(tr>0?' hot':'')+'" data-act="roll">🎲 <b>'+tr+'</b></span>'+
+    '<span class="ac-chip ac-shard" data-act="shard">🪙 <b>'+shards+'</b></span>'+
+    (buff>0?'<span class="ac-chip ac-buff">⚡ Surge <b>×'+buff+'</b></span>':'')+
+    '<span class="ac-chip ac-stamp" data-act="stamp">🎖 Stamps</span>'+
+    '<span class="ac-chip" data-act="studio" style="border-color:rgba(61,220,255,.3);color:#a5ecff">🎨 Studio</span>';
 }
+
 /* ── stamps modal ── */
 function openStamps(){ if(!stampModal){ stampModal=mkOverlay(); var b=mkBox(stampModal); b.innerHTML='<div class="ac-head"><div><div class="ac-title">🎖 Proof-of-Work Passport</div></div><button class="ac-x">✕</button></div><div class="ac-sub">Every day you opened the tracker and finished = a green stamp. Opened but fell short = a red scar you <b>cannot delete</b>. Days you never opened = a gap (no judgement). 35-day window.</div><div class="ac-grid35" id="ac-stampgrid"></div>'; wireClose(stampModal); }
   var g=stampModal.querySelector('#ac-stampgrid'); g.innerHTML=''; var fs=firstSeenDate();
@@ -1344,24 +1345,8 @@ function openRitual(){ if(!ritualModal){ ritualModal=mkOverlay(); var b=mkBox(ri
 function flipRitual(){ if(ritualModal.dataset.armed==='1') return; ritualModal.dataset.armed='1'; var got=spendHighest(); var card=ritualModal.querySelector('#ac-ritcard'); card.classList.remove('shake'); card.classList.add('flip'); if(!got){ ritualModal.classList.remove('open'); return; }
   setTimeout(function(){ revealRitual(got); },720); renderRail();
 }
-function equipItem(it){
-  if(!it) return;
-  if(!owns(it.id)){ unl.push(it.id); saveUnl(); }
-  if(it.set || BIOME_PACKS[it.id]){
-    applyBiome(it);
-  } else if(it.slot){
-    eq[it.slot] = it.id;
-    eq.biome = 'custom';
-    if(it.slot === 'particles') eq.particleSystem = it.id;
-    if(it.slot === 'treeStyle') eq.treeStyle = it.id;
-    saveEq();
-  }
-  if(studioModal) renderStudio();
-  renderRail();
-  toast('Equipped ' + (it.name || it.id));
-}
 function revealRitual(got){ var front=ritualModal.querySelector('#ac-ritfront'); var it=got.item; var rar=it?it.rar:'common'; var rc=it?(RAR_COL(rar)||'#9aa3b5'):'#9aa3b5'; front.style.setProperty('--rc', hexA(rc,.35)); front.style.boxShadow='0 0 60px -6px '+hexA(rc,.7)+', inset 0 0 0 2px '+rc;
-  if(it){ front.innerHTML='<div class="rar" style="color:'+rc+'">'+rar.toUpperCase()+'</div><div class="em">'+(it.emoji||'✦')+'</div><div class="nm">'+it.name+'</div><div class="sl">'+slotLabel(it.slot || (it.set ? 'cosmetic' : ''))+(it.set?' · BIOME':'')+'</div><div class="sh">+'+got.shards+' shards</div>'+(got.bonus.length?'<div class="ac-bonus">'+got.bonus.join(' · ')+'</div>':''); }
+  if(it){ front.innerHTML='<div class="rar" style="color:'+rc+'">'+rar.toUpperCase()+'</div><div class="em">'+(it.emoji||'✦')+'</div><div class="nm">'+it.name+'</div><div class="sl">'+slotLabel(it.slot||it.set?'cosmetic':'')+(it.set?' · BIOME':'')+'</div><div class="sh">+'+got.shards+' shards</div>'+(got.bonus.length?'<div class="ac-bonus">'+got.bonus.join(' · ')+'</div>':''); }
   else { front.innerHTML='<div class="rar" style="color:#9aa3b5">SHARDS</div><div class="em">🪙</div><div class="nm">+'+got.shards+' Shards</div><div class="sl">the fates withheld a relic</div>'+(got.bonus.length?'<div class="ac-bonus">'+got.bonus.join(' · ')+'</div>':''); }
   var act=ritualModal.querySelector('#ac-ritact');
   act.innerHTML=(it?'<button class="ac-btn" id="ac-equip" style="max-width:160px">Equip</button>':'')+'<button class="ac-btn ghost" id="ac-studio2" style="max-width:150px">Studio</button>'+(totalRolls()>0?'<button class="ac-btn ghost" id="ac-again" style="max-width:130px">Roll Again</button>':'');
@@ -1370,7 +1355,7 @@ function revealRitual(got){ var front=ritualModal.querySelector('#ac-ritfront');
   var ag=act.querySelector('#ac-again'); if(ag) ag.onclick=function(){ openRitual(); };
 }
 function RAR_COL(r){ return {common:'#9aa3b5',uncommon:'#39d98a',rare:'#4cc9ff',epic:'#a78bfa',legendary:'#ffb224'}[r]||'#9aa3b5'; }
-function slotLabel(s){ return {aura:'Tree Aura',treeStyle:'Foliage',scatter:'Ground',particles:'Sky & FX',structure:'Structure',creature:'Life',tint:'Light',cosmetic:'Cosmetic'}[s]||s; }
+function slotLabel(s){ return {aura:'Tree Aura',scatter:'Ground',particles:'Sky & FX',structure:'Structure',creature:'Life',tint:'Light',cosmetic:'Cosmetic'}[s]||s; }
 
 /* ── studio modal ── */
 function isOwnedBiome(bi){
