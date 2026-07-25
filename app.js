@@ -34,6 +34,9 @@ import {
     ELO_GEM_STAMP_TUNING,
     CALIBRATED_SOLVE_THRESHOLD,
     getEloBand,
+    // ── Practice modes (Flow State / Hardcore) — picker windows + reward tuning ──
+    PRACTICE_MODES,
+    MODE_TUNING,
 } from './storage.js';
 
 import {
@@ -295,12 +298,26 @@ let particles = [];
 })();
 
 // ==================== MODAL FUNCTIONS ====================
+// ── Modal open/close race guard ──
+// openModal defers `.active` to a requestAnimationFrame so the fade-in CSS
+// transition can start from display:flex. If a modal is closed in that same
+// frame (open → close in one synchronous flow, e.g. mode-exit right after a
+// mode-start), the close removes `.active` FIRST, then the stale rAF re-adds
+// it — so the deferred `display='none'` check sees `.active` and bails,
+// leaving a zombie modal stuck on screen. A monotonic per-modal token makes
+// every close invalidate any pending open rAF.
+const _modalOpenTokens = {};
+
 export function openModal(id) {
     const m = document.getElementById(id);
     if (!m) return;
     if (id === 'calendar-modal') renderCalendar();
     m.style.display = 'flex';
-    requestAnimationFrame(() => { m.classList.add('active'); });
+    const token = (_modalOpenTokens[id] || 0) + 1;
+    _modalOpenTokens[id] = token;
+    requestAnimationFrame(() => {
+        if (_modalOpenTokens[id] === token) m.classList.add('active');
+    });
 }
 
 export function closeModal(e, id, force) {
@@ -308,6 +325,7 @@ export function closeModal(e, id, force) {
     const m = document.getElementById(id);
     if (!m) return;
     if (force || (e && e.target === m)) {
+        _modalOpenTokens[id] = (_modalOpenTokens[id] || 0) + 1; // invalidate pending open rAF
         m.classList.remove('active');
         setTimeout(() => { if (!m.classList.contains('active')) m.style.display = 'none'; }, 300);
     }
@@ -316,6 +334,7 @@ export function closeModal(e, id, force) {
 export function closeModalStr(id) {
     const m = document.getElementById(id);
     if (!m) return;
+    _modalOpenTokens[id] = (_modalOpenTokens[id] || 0) + 1; // invalidate pending open rAF
     m.classList.remove('active');
     setTimeout(() => { if (!m.classList.contains('active')) m.style.display = 'none'; }, 300);
 }
@@ -339,6 +358,7 @@ export function closeModalStr(id) {
 function forceHideModal(id) {
     const m = document.getElementById(id);
     if (!m) return;
+    _modalOpenTokens[id] = (_modalOpenTokens[id] || 0) + 1; // invalidate pending open rAF
     m.classList.remove('active');
     m.style.display = 'none';
 }
@@ -1189,6 +1209,18 @@ export function openChapterDetail(ch) {
 }
 
 export function renderChaptersList() {
+    // ── Self-heal: surface orphaned chapters. Any chapter present in the bank
+    // but missing from the chapter list (older gem-stamped imports) gets
+    // registered here so its questions become reachable again. ──
+    const _known = AppState.chapters[AppState.currentSubject] || (AppState.chapters[AppState.currentSubject] = []);
+    let _healed = false;
+    for (const q of AppState.questionBank) {
+        if (q.subject === AppState.currentSubject && q.chapter && !_known.includes(q.chapter)) {
+            _known.push(q.chapter);
+            _healed = true;
+        }
+    }
+    if (_healed) saveAllAsync().catch(console.error);
     let cont = document.getElementById('chapters-list-container');
     cont.innerHTML = '';
     (AppState.chapters[AppState.currentSubject] || []).forEach(ch => {
@@ -2145,8 +2177,48 @@ IMPORTANT – MULTI‑ANSWER QUESTIONS:
     }
 }
 
+// Reentrancy lock for saveAllQuestions — the import buffer
+// (AppState.extractedItems) is only cleared AFTER a successful commit, so a
+// double-click / double-invocation on "Import All Questions" used to push the
+// entire batch a second time → the classic "my uploads randomly duplicate".
+let _saveAllQuestionsInFlight = false;
+
+/**
+ * Dedupe key for an extracted/banked question. Prefers normalized question
+ * text; falls back to an image fingerprint for image-only items. Returns null
+ * when there is not enough signal to safely dedupe (item is always imported).
+ */
+function _questionDedupeKey(subject, chapter, q) {
+    const text = (q.extractedText || '').toString().toLowerCase().replace(/\s+/g, ' ').trim();
+    if (text.length >= 12) return subject + '|' + chapter + '|t:' + text;
+    const img = q.imageDataUrl;
+    if (typeof img === 'string' && img.length > 100) {
+        return subject + '|' + chapter + '|i:' + img.length + ':' + img.slice(-64);
+    }
+    return null;
+}
+
 export function saveAllQuestions() {
+    // ── Guards: no buffer → nothing to do; already saving → swallow the
+    // re-entrant click (double-click protection). ──
+    if (!Array.isArray(AppState.extractedItems) || AppState.extractedItems.length === 0) {
+        forceHideModal('preview-modal');
+        return;
+    }
+    if (_saveAllQuestionsInFlight) return;
+    _saveAllQuestionsInFlight = true;
+
+    try {
     const bankBeforeLength = AppState.questionBank.length;
+    // Seed the dedupe set with the existing bank so re-pasting the same Gem
+    // dump (or the same crop batch) can't double-import, and catch dupes
+    // inside the batch itself.
+    const seenKeys = new Set();
+    for (const existing of AppState.questionBank) {
+        const k = _questionDedupeKey(existing.subject, existing.chapter, existing);
+        if (k) seenKeys.add(k);
+    }
+    let skippedDupes = 0;
     for (let i = 0; i < AppState.extractedItems.length; i++) {
         let q = AppState.extractedItems[i];
         const manualInput = document.getElementById(`manual-answer-${i}`);
@@ -2217,8 +2289,25 @@ export function saveAllQuestions() {
             stampBatchSuspiciousStdev: !!q.stampBatchSuspiciousStdev,
             difficulty: q.difficulty || null,
         };
+        // ── Dedupe: skip exact duplicates already in the bank or earlier in
+        // this batch (same subject+chapter+text / image fingerprint). ──
+        const _dk = _questionDedupeKey(newQ.subject, newQ.chapter, newQ);
+        if (_dk) {
+            if (seenKeys.has(_dk)) { skippedDupes++; continue; }
+            seenKeys.add(_dk);
+        }
         AppState.questionBank.push(newQ);
+        // ── Register the (possibly gem-stamped) chapter so it actually gets a
+        // tile in the chapter grid. Without this, questions imported under a
+        // chapter name not already in AppState.chapters are orphaned — stored
+        // in the bank (so re-uploads flag "duplicate") but never rendered. ──
+        const _chList = AppState.chapters[newQ.subject] || (AppState.chapters[newQ.subject] = []);
+        if (newQ.chapter && !_chList.includes(newQ.chapter)) _chList.push(newQ.chapter);
     }
+    const importedCount = AppState.questionBank.length - bankBeforeLength;
+    // ── Clear the import buffer AFTER a successful commit so a second
+    // invocation can never re-push the same batch. ──
+    AppState.extractedItems = [];
     saveAllAsync().catch(console.error);
     // ── Auto-navigate: if the freshly imported batch landed on a different
     // (subject, chapter) than the user is currently viewing, jump there so
@@ -2261,7 +2350,10 @@ export function saveAllQuestions() {
     // conditional guard prevents crashes if the terminal isn't mounted.
     const terminal = document.getElementById('text-add-terminal');
     if (terminal) terminal.value = '';
-    alert(`Successfully imported ${AppState.extractedItems.length} fresh problems into the local engine. Let's see how you handle them.`);
+    alert(`Successfully imported ${importedCount} fresh problems into the local engine.${skippedDupes > 0 ? ` (${skippedDupes} duplicate${skippedDupes > 1 ? 's' : ''} skipped.)` : ''} Let's see how you handle them.`);
+    } finally {
+        _saveAllQuestionsInFlight = false;
+    }
 }
 
 // ============================================================================
@@ -2387,20 +2479,34 @@ function sanitizeGemTextDump(rawInput) {
         );
     }
 
-    // Step 1: Repair unescaped inner quotes inside "extractedText" properties globally
-    rawInput = rawInput.replace(/"extractedText"\s*:\s*"([\s\S]*?)"\s*(?=,\s*"options"|,\s*"correctAnswer"|,\s*"type"|,\s*"solution"|,\s*\}|\s*\})/g, (match, content) => {
+    // Step 1: Repair unescaped inner quotes inside "extractedText" properties globally.
+    // The lookahead MUST terminate at ANY following key (generic `"key":` shape),
+    // not just options/correctAnswer/type/solution — Gem payloads order fields
+    // arbitrarily (subject/chapter/qElo/targetTimeMins often follow extractedText),
+    // and the old partial list let the lazy capture swallow those keys, escaping
+    // their quotes (qElo stamps destroyed) and, when none of the whitelisted keys
+    // existed in the item, eating the NEXT item's "extractedText" anchor (whole
+    // question silently dropped from the ingest).
+    rawInput = rawInput.replace(/"extractedText"\s*:\s*"([\s\S]*?)"\s*(?=,\s*"[^"\n]+?"\s*:|,\s*\}|\s*\}|\s*\])/g, (match, content) => {
         let cleaned = content.replace(/\\"/g, '\uEAEA').replace(/"/g, '\\"').replace(/\uEAEA/g, '\\"');
         return `"extractedText": "${cleaned}"`;
     });
 
-    // Step 2: Repair unescaped inner quotes inside "solution" properties globally
-    rawInput = rawInput.replace(/"solution"\s*:\s*"([\s\S]*?)"\s*(?=,\s*"extractedText"|,\s*"options"|,\s*"correctAnswer"|,\s*"type"|,\s*\}|\s*\})/g, (match, content) => {
+    // Step 2: Repair unescaped inner quotes inside "solution" properties globally.
+    // Same generic-key lookahead as Step 1 — solution is frequently followed by
+    // subject/chapter/qElo/tags/model, which the old whitelist didn't know.
+    rawInput = rawInput.replace(/"solution"\s*:\s*"([\s\S]*?)"\s*(?=,\s*"[^"\n]+?"\s*:|,\s*\}|\s*\}|\s*\])/g, (match, content) => {
         let cleaned = content.replace(/\\"/g, '\uEAEA').replace(/"/g, '\\"').replace(/\uEAEA/g, '\\"');
         return `"solution": "${cleaned}"`;
     });
 
-    // Step 3: Repair unescaped inner quotes inside individual option item entries safely (handles same-line options)
-    rawInput = rawInput.replace(/"([A-D]\)[\s\S]*?)"\s*(?=,\s*"[A-D]\)"|,\s*\]|\s*\])/g, (match, content) => {
+    // Step 3: Repair unescaped inner quotes inside individual option item entries safely (handles same-line options).
+    // The next-option lookahead must be `,"[A-D])` WITHOUT a trailing quote — the
+    // old `,"[A-D])"` only matched when the NEXT option had EMPTY text, so real
+    // same-line options ("A) $9$","B) $6$") collapsed into ONE giant match and
+    // every inner quote (including the legitimate option separators) got escaped,
+    // mangling the whole options array into garbage tokens.
+    rawInput = rawInput.replace(/"([A-D]\)[\s\S]*?)"\s*(?=,\s*"[A-D]\)|,\s*\]|\s*\])/g, (match, content) => {
         let cleaned = content.replace(/\\"/g, '\uEAEA').replace(/"/g, '\\"').replace(/\uEAEA/g, '\\"');
         return `"${cleaned}"`;
     });
@@ -2457,8 +2563,11 @@ export async function processGemTextDump() {
         for (let i = 1; i < segments.length; i++) {
             const segment = segments[i];
 
-            // 1. Extract the raw question text by finding where the next key metadata block begins
-            const textEndIndex = segment.search(/"\s*(?=,\s*"options"|,\s*"correctAnswer"|,\s*"type"|,\s*"solution")/g);
+            // 1. Extract the raw question text by finding where the next key metadata block begins.
+            // Generic `"key":` lookahead (same root cause as sanitizeGemTextDump Step 1):
+            // Gem payloads emit subject/chapter/qElo right after extractedText, and the
+            // old partial whitelist made search() return -1 → the item was silently dropped.
+            const textEndIndex = segment.search(/"\s*(?=,\s*"[^"\n]+?"\s*:|\s*\}|\s*\])/);
             if (textEndIndex === -1) continue;
             let extractedText = segment.substring(0, textEndIndex);
 
@@ -2503,9 +2612,12 @@ export async function processGemTextDump() {
                 type = typeMatch[1].trim();
             }
 
-            // 5. Extract step-by-step solution string
+            // 5. Extract step-by-step solution string. The old lookahead only
+            // matched when "solution" was the LAST field before `}` — solutions
+            // followed by subject/chapter/qElo/etc. were silently dropped. Accept
+            // any following key (or an object/array close) as the terminator.
             let solution = "";
-            const solMatch = metadata.match(/"solution"\s*:\s*"([\s\S]*?)"\s*(?=\}|\s*\})/);
+            const solMatch = metadata.match(/"solution"\s*:\s*"([\s\S]*?)"\s*(?=,\s*"[^"\n]+?"\s*:|\s*\}|\s*\])/);
             if (solMatch && solMatch[1]) {
                 solution = solMatch[1];
             }
@@ -2619,7 +2731,11 @@ export async function processGemTextDump() {
         const chapterStats = _auditGemBatchByChapter(parsedItems);
         for (const it of parsedItems) {
             const subjKey = _normalizeSubjectKey(it.subject || 'unknown');  // match _auditGemBatchByChapter bucket generator
-            const key = (it.chapter || '') + '|' + subjKey;
+            // Key order MUST match _auditGemBatchByChapter's bucket generator
+            // (`subj + '|' + ch`) — the previous 'chapter|subject' order never
+            // matched, so the suspicious-distribution / low-stdev stamps were
+            // silently never applied.
+            const key = subjKey + '|' + (it.chapter || '');
             const stat = chapterStats[key];
             if (stat && stat.suspiciousDistribution) it.stampBatchSuspiciousDistribution = true;
             if (stat && stat.suspiciousStdev) it.stampBatchSuspiciousStdev = true;
@@ -3192,6 +3308,11 @@ export function toggleOriginalPhoto() {
 
 export function renderPracticeQuestionModal() {
     AppState.currentQ = AppState.practiceQuestions[AppState.currentPracticeIndex];
+    // ── Empty-queue guard ──
+    // Mode exit / refill-failure paths clear the queue before this runs;
+    // without the guard, reading `.imageDataUrl` off undefined throws and the
+    // rest of the teardown sequence dies with it.
+    if (!AppState.currentQ) return;
     AppState.selectedMcq = null;
     const submitted = AppState.practiceSubmittedFlags[AppState.currentPracticeIndex];
     const container = document.getElementById('practice-modal-content');
@@ -3736,6 +3857,30 @@ function _isQuestionEloCalibrated(q) {
     return false;
 }
 
+/**
+ * Resolve the practice mode that applies to THIS solve. Flow/Hardcore
+ * multipliers must only fire for the question the mode picker actually
+ * queued into the practice modal — solves arriving from other entry points
+ * (Error-Matrix SR drawer, revision flows) always settle at standard rates.
+ * Without this gate, entering Hardcore and then reviewing easy matrix
+ * errors would milk 1.8× wins + 2× escrow and burn the daily cap on
+ * questions the hardcore picker never chose.
+ */
+function _activeModeForQuestion(questionObj) {
+    const mode = AppState.practiceFlowMode || 'standard';
+    if (mode === 'standard') return 'standard';
+    const queued = Array.isArray(AppState.practiceQuestions)
+        ? AppState.practiceQuestions[AppState.currentPracticeIndex]
+        : null;
+    if (!queued || !questionObj) return 'standard';
+    // Reference identity first (modal passes live bank objects), id fallback
+    // in case a caller hands a re-fetched copy of the same question.
+    if (queued === questionObj) return mode;
+    if (queued.id !== undefined && questionObj.id !== undefined &&
+        queued.id.toString() === questionObj.id.toString()) return mode;
+    return 'standard';
+}
+
 /** Look up the matching band target time in seconds. */
 function _eloTargetSeconds(q) {
     const mins = (typeof q.targetTimeMins === 'number' && q.targetTimeMins > 0) ? q.targetTimeMins : _eloBandTargetTime(q.qElo || 1200);
@@ -3751,7 +3896,7 @@ function _eloTargetSeconds(q) {
  * preserves the chemistry slow-penalty and the physics calculation
  * buffer from the legacy code.
  */
-function _deltaBasedUserAndQuestionReward(userElo, qElo, isCorrect, subject, actualSecs, targetSecs) {
+function _deltaBasedUserAndQuestionReward(userElo, qElo, isCorrect, subject, actualSecs, targetSecs, mode) {
     const S = typeof isCorrect === 'number' ? isCorrect : (isCorrect ? 1 : 0);
     const T = ELO_GEM_STAMP_TUNING;
     // Standard ELO win probability for the user
@@ -3762,7 +3907,9 @@ function _deltaBasedUserAndQuestionReward(userElo, qElo, isCorrect, subject, act
     if (subject === 'physics') tau *= T.physicsTauBuffer;
     // Time multiplier: faster-than-target amplifies wins; slower amplifies losses.
     // Practice mode (Flow / Hardcore) reshapes the sweet spot — see _modeTimeMultiplier.
-    const timeMult = _modeTimeMultiplier(S >= 0.5 ? 1 : 0, tau, AppState.practiceFlowMode || 'standard');
+    // The mode arrives pre-gated from the caller (matrix/SR-drawer solves
+    // pass 'standard' even while a mode is armed in the practice modal).
+    const timeMult = _modeTimeMultiplier(S >= 0.5 ? 1 : 0, tau, mode || 'standard');
     // User ELO delta — full rating swing
     let rawSubjectDelta = T.K_user * (S - P_win) * timeMult;
     // Stinginess: missing an easier-than-me question should hurt more
@@ -3772,7 +3919,11 @@ function _deltaBasedUserAndQuestionReward(userElo, qElo, isCorrect, subject, act
     // Question qElo drift — tiny K_q. Question "wins" when user loses (1-S),
     // and matches ~the magnitude the system expects for the user's win probability.
     const qEloDrift = Math.round(T.K_q * ((1 - S) - P_q_win));
-    return { rawSubjectDelta, qEloDrift, P_win };
+    // timeMult + the actual seconds used are returned so calculateEloMigration
+    // can paint the FAST/SLOW chip without recomputing (previously these were
+    // read from an out-of-scope local → TypeError on every calibrated solve).
+    const effSecs = (typeof actualSecs === 'number' && actualSecs > 0) ? actualSecs : targetSecs;
+    return { rawSubjectDelta, qEloDrift, P_win, timeMult, tauSeconds: Math.round(effSecs) };
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -3815,6 +3966,11 @@ function _modeTimeMultiplier(S, tau, mode) {
 function _pickQuestionForMode(subject, chapter, mode) {
     if (!PRACTICE_MODES.includes(mode) || mode === 'standard') return null;
     const cfg = MODE_TUNING[mode];
+    // Defensive: normalize the subject key so a display-name caller
+    // ('Mathematics') can't silently miss every bank entry ('maths') and make
+    // the mode buttons look dead. Both current assignment sites already pass
+    // normalized keys, so this is a no-op for valid input.
+    subject = _normalizeSubjectKey(subject);
     const bank = AppState.questionBank.filter(q =>
         q.subject === subject && q.chapter === chapter &&
         q.status !== 'solved' &&    // unsolved only (mirror legacy practice)
@@ -3922,13 +4078,20 @@ function _setPracticeMode(mode) {
     _rebuildPracticeQuestionsForMode();
     _renderModeBadge();
     // ── Open the practice modal with the freshly-picked mode question ──
-    // Without this call the buttons appear to "do nothing" — the queue is
-    // built and the badge painted but the modal never opens, so the user
-    // sees no UI change. Mirrors what startPracticeWithQuestion does for
-    // the standard path.
+    // Previously this block only RE-rendered the modal contents without
+    // calling openModal('practice-modal'), so clicking FLOW / HARDCORE built
+    // the queue and painted the badge but nothing ever appeared on screen —
+    // the classic "the mode buttons don't work" report. Mirrors
+    // startPracticeWithQuestion's open sequence exactly.
     if (AppState.practiceQuestions.length > 0 &&
         typeof renderPracticeQuestionModal === 'function') {
+        AppState.practiceSeconds = 0;
+        updatePracticeTimerDisplay();
         renderPracticeQuestionModal();
+        openModal('practice-modal');
+        AppState.photoHidden = false;
+        const hideBtn = document.getElementById('hide-photo-toggle');
+        if (hideBtn) hideBtn.textContent = '📷 Hide Image';
     }
     // ── Start the practice-question timer ──
     // Mirror startPracticeWithQuestion's timing setup so practiceSeconds actually
@@ -3954,7 +4117,10 @@ function _exitPracticeMode() {
     AppState.currentPracticeIndex = 0;
     saveAllAsync().catch(console.error);
     _renderModeBadge();
-    if (typeof renderPracticeQuestionModal === 'function') renderPracticeQuestionModal();
+    // Queue is empty now — close any lingering practice modal instead of
+    // re-rendering a blank question (renderPracticeQuestionModal guards
+    // against empty queues, but the modal shell would linger otherwise).
+    closeModalStr('practice-modal');
 }
 
 /**
@@ -4125,29 +4291,46 @@ function calculateEloMigration(subject, actualTime, scoreOutcome, chapterHealth,
 
     // === INSERTED: Delta-Based Reward Fast Path (pre-ELO schema) ===
     if (_isQuestionEloCalibrated(questionObj)) {
-        const dr = _deltaBasedUserAndQuestionReward(
-            E_s, Q_Elo, (Number(scoreOutcome) === 1) ? 1 : 0, safeSubject,
-            Number(actualTime) || 0,
-            _eloTargetSeconds(questionObj || { qElo: Q_Elo })
-        );
-        const oldE_s = E_s;
-        let newE_s = Math.max(0, Math.min(ELO_GEM_STAMP_TUNING.ceiling, E_s + dr.rawSubjectDelta));
-        AppState.elo[safeSubject] = newE_s;
+        // Sefc is declared BEFORE any use — the previous build referenced it
+        // ~25 lines above this line (temporal dead zone → ReferenceError that
+        // silently killed every gem-stamped/learned solve via the caller's
+        // try/catch).
+        const Sefc = (Number(scoreOutcome) === 1) ? 1 : 0;
 
         // Practice-mode reward multipliers + escrow bonus multiplier.
         // Hardcore wins get 1.8×, losses get 0.6× sympathy; escrow bonus 2×.
         // Flow mode passes through at 1.0× (standard cadence).
-        const mode = AppState.practiceFlowMode || 'standard';
+        // GATED per-solve: only the question the mode picker queued gets the
+        // mode rates — matrix/SR-drawer reviews settle at standard even while
+        // a mode is armed, so hardcore can't be farmed via easy error reviews.
+        const mode = _activeModeForQuestion(questionObj);
         const modeCfg = MODE_TUNING[mode] || MODE_TUNING.standard;
+
+        const dr = _deltaBasedUserAndQuestionReward(
+            E_s, Q_Elo, Sefc, safeSubject,
+            Number(actualTime) || 0,
+            _eloTargetSeconds(questionObj || { qElo: Q_Elo }),
+            mode
+        );
+
+        // Applied BEFORE the AppState.elo mutation — previously the rating was
+        // written with the UN-multiplied delta and the multiplier only mutated
+        // the local dr object afterwards, so Hardcore 1.8× never landed.
         dr.rawSubjectDelta = Math.round(
             dr.rawSubjectDelta *
-            (Sefc === 1 ? modeCfg.winsMultiplier : modeCfg.lossMultiplier)
+            (Sefc === 1 ? (modeCfg.winsMultiplier || 1) : (modeCfg.lossMultiplier || 1))
         );
+
+        const oldE_s = E_s;
+        let newE_s = Math.max(0, Math.min(ELO_GEM_STAMP_TUNING.ceiling, E_s + dr.rawSubjectDelta));
+        AppState.elo[safeSubject] = newE_s;
 
         let _acctEscrowAccrued = 0;
         if (dr.rawSubjectDelta > 0) {
-            const rawEscrow = AccountabilityEngine.accrueEscrowBonus(safeSubject, dr.rawSubjectDelta);
-            _acctEscrowAccrued = Math.round(rawEscrow * (modeCfg.escrowBonusMultiplier || 1));
+            // Escrow multiplier is applied INSIDE the engine so the stored
+            // escrow matches the toast (previously only the display scaled).
+            _acctEscrowAccrued = Math.round(AccountabilityEngine.accrueEscrowBonus(
+                safeSubject, dr.rawSubjectDelta, modeCfg.escrowBonusMultiplier || 1));
             // Track hardcore daily use (only when winning on hardcore)
             if (mode === 'hardcore' && Sefc === 1) {
                 const today = new Date().toISOString().slice(0, 10);
@@ -4166,7 +4349,6 @@ function calculateEloMigration(subject, actualTime, scoreOutcome, chapterHealth,
         let isAnomaly = false;
         if (Math.abs(newQ - chapterAvg) > 600) { isAnomaly = true; }
 
-        const Sefc = (Number(scoreOutcome) === 1) ? 1 : 0;
         questionObj.qEloSource = (questionObj.qEloSource === 'gem-stamped') ? 'gem-stamped' : 'learned';
         questionObj.solveCount = (questionObj.solveCount || 0) + 1;
         questionObj.lastSolvedAt = new Date().toISOString();
@@ -4200,16 +4382,19 @@ function calculateEloMigration(subject, actualTime, scoreOutcome, chapterHealth,
         result.newTier = newTier.badge;
         result.isAnomaly = isAnomaly;
         result.escrowBonus = _acctEscrowAccrued;
-        // Time-bonus metadata for injectEloShiftChip
-        result.timeBonusFactor = parseFloat(timeMult.toFixed(3));
+        // Time-bonus metadata for injectEloShiftChip. timeMult/tauSeconds are
+        // returned by _deltaBasedUserAndQuestionReward — the previous build
+        // referenced a `timeMult` local that only existed inside that helper,
+        // throwing a TypeError here on every calibrated solve.
+        const _tm = (typeof dr.timeMult === 'number' && isFinite(dr.timeMult)) ? dr.timeMult : 1;
+        result.timeBonusFactor = parseFloat(_tm.toFixed(3));
         result.tauSeconds = Math.round(Number(dr.tauSeconds) || 0);
-        result.timeBonusLabel = (timeMult >= 1.10)
-            ? 'FAST ×' + timeMult.toFixed(2)
-            : (timeMult <= 0.85)
-                ? 'SLOW ×' + timeMult.toFixed(2)
+        result.timeBonusLabel = (_tm >= 1.10)
+            ? 'FAST ×' + _tm.toFixed(2)
+            : (_tm <= 0.85)
+                ? 'SLOW ×' + _tm.toFixed(2)
                 : 'BALANCED';
-        result.modeActive = (AppState.practiceFlowMode && AppState.practiceFlowMode !== 'standard')
-            ? AppState.practiceFlowMode : null;
+        result.modeActive = (mode !== 'standard') ? mode : null;
         return result;
     }
     // === END INSERTED FAST PATH ===
@@ -4277,21 +4462,40 @@ function calculateEloMigration(subject, actualTime, scoreOutcome, chapterHealth,
         }
     }
 
-    // ── Accountability Engine: accrue escrow bonus on positive delta ──
-    let _acctEscrowAccrued = 0;
-    if (rawDelta > 0) {
-      _acctEscrowAccrued = AccountabilityEngine.accrueEscrowBonus(safeSubject, rawDelta);
-    }
-
     const oldE_s = E_s;
     // Practice-mode multiplier: Hardcore win = 1.8×, loss = 0.6× sympathy;
     // Flow = 1.0× passthrough. Apply BEFORE the newE_s mutation so the
     // user-visible delta matches the badge exactly.
+    // GATED per-solve (see _activeModeForQuestion): matrix/SR-drawer reviews
+    // of uncalibrated questions settle at standard rates even mid-mode.
+    const _legacyMode = _activeModeForQuestion(questionObj);
+    const _legacyModeCfg = MODE_TUNING[_legacyMode] || MODE_TUNING.standard;
     {
-        const modeCfg = MODE_TUNING[AppState.practiceFlowMode || 'standard'];
         const isWin = (S === 1);
-        const m = isWin ? (modeCfg.winsMultiplier || 1) : (modeCfg.lossMultiplier || 1);
+        const m = isWin ? (_legacyModeCfg.winsMultiplier || 1) : (_legacyModeCfg.lossMultiplier || 1);
         rawDelta = Math.round(rawDelta * m);
+    }
+
+    // ── Accountability Engine: accrue escrow bonus on positive delta ──
+    // Runs AFTER the mode multiplier so the hardcore escrow bonus (2× drop
+    // rate) scales off the final payout — matching the calibrated fast path.
+    let _acctEscrowAccrued = 0;
+    if (rawDelta > 0) {
+      // Escrow multiplier applied inside the engine (see fast-path note).
+      _acctEscrowAccrued = Math.round(AccountabilityEngine.accrueEscrowBonus(
+          safeSubject, rawDelta, _legacyModeCfg.escrowBonusMultiplier || 1));
+      // Track hardcore daily use so the cap in _setPracticeMode actually
+      // bites on the legacy (uncalibrated) path too — previously only the
+      // fast path incremented it, letting hardcore farm uncapped via
+      // uncalibrated questions.
+      if (_legacyMode === 'hardcore' && S === 1) {
+          const today = new Date().toISOString().slice(0, 10);
+          if (AppState.hardcoreDailyDate !== today) {
+              AppState.hardcoreDailyDate = today;
+              AppState.hardcoreDailyCount = 0;
+          }
+          AppState.hardcoreDailyCount = (AppState.hardcoreDailyCount || 0) + 1;
+      }
     }
     let newE_s = Math.max(0, E_s + rawDelta);
     if (newE_s > 2999.99) newE_s = 2999.99;
@@ -5246,6 +5450,33 @@ export function practiceNext() {
     // "tap one button, sit back for 45 minutes" UX work end-to-end.
     if (AppState.practiceFlowMode && AppState.practiceFlowMode !== 'standard') {
         _rebuildPracticeQuestionsForMode();
+        if (AppState.practiceQuestions.length > 0) {
+            // Refill produced a fresh question — present it at index 0 with a
+            // fresh timer. Without this branch the 1-item refilled pool fails
+            // the `index + 1 < length` check below and the mode dies after
+            // ONE solve with a bogus "Queue completely cleared!" alert.
+            AppState.currentPracticeIndex = 0;
+            AppState.practiceSeconds = 0;
+            updatePracticeTimerDisplay();
+            if (AppState.practiceTimer) clearInterval(AppState.practiceTimer);
+            if (!AppState.practiceSubmittedFlags[0]) {
+                AppState.practiceTimer = setInterval(() => {
+                    AppState.practiceSeconds++;
+                    updatePracticeTimerDisplay();
+                }, 1000);
+            } else {
+                AppState.practiceTimer = null;
+            }
+            renderPracticeQuestionModal();
+            return;
+        }
+        // Refill found nothing — _rebuildPracticeQuestionsForMode already
+        // alerted and exited the mode. Close quietly without the generic
+        // "queue cleared" double-alert.
+        if (AppState.practiceTimer) { clearInterval(AppState.practiceTimer); AppState.practiceTimer = null; }
+        closePracticeModal();
+        showQuestionList();
+        return;
     }
     if (AppState.currentPracticeIndex + 1 < AppState.practiceQuestions.length) {
         AppState.currentPracticeIndex++;

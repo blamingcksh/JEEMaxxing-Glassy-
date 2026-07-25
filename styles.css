@@ -6703,3 +6703,88 @@ ACCOUNTABILITY ENGINE v2 — Risk & Accountability Desk
   .acct-risk-score { margin-left: 0; }
   .acct-collateral { min-width: 100%; }
 }
+
+/* ══════════════════════════════════════════════════════════════════════
+   GALLERY BREAK — the burn reveal (gallery-break.js)
+   The overlay sits above EVERYTHING (practice modal, SR drawer, popups):
+   during a break, whatever is open doesn't matter — that's the point.
+   ══════════════════════════════════════════════════════════════════════ */
+#gallery-break-overlay {
+  position: fixed; inset: 0;
+  z-index: 1000600;
+  pointer-events: none;   /* graduated — JS flips to auto past 30% burn */
+}
+#gb-canvas { display: block; width: 100vw; height: 100vh; }
+
+.gb-quote-box {
+  position: absolute; left: 50%; bottom: 12vh;
+  transform: translateX(-50%) translateY(14px);
+  width: min(640px, 86vw);
+  text-align: center;
+  padding: 22px 28px;
+  border-radius: 18px;
+  background: rgba(8, 6, 4, 0.55);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 1.4s ease, transform 1.4s ease, visibility 0s linear 1.4s;
+}
+.gb-quote-box.gb-visible {
+  opacity: 1;
+  visibility: visible;
+  transform: translateX(-50%) translateY(0);
+  transition: opacity 1.4s ease, transform 1.4s ease;
+}
+
+.gb-plaque {
+  font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.55);
+  margin-bottom: 12px;
+}
+.gb-quote {
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: clamp(17px, 2.4vw, 22px);
+  line-height: 1.55;
+  color: rgba(255, 250, 240, 0.96);
+  text-shadow: 0 2px 18px rgba(0, 0, 0, 0.6);
+}
+.gb-quote-by {
+  margin-top: 10px;
+  font-family: Georgia, serif; font-style: italic; font-size: 13px;
+  color: rgba(255, 250, 240, 0.6);
+}
+
+.gb-continue {
+  margin-top: 18px;
+  padding: 10px 34px;
+  font-size: 13px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase;
+  color: rgba(255, 250, 240, 0.9);
+  background: transparent;
+  border: 1px solid rgba(255, 250, 240, 0.35);
+  border-radius: 999px;
+  cursor: pointer;
+  opacity: 0;
+  transform: translateY(6px);
+  pointer-events: none;
+  transition: opacity 1s ease, transform 1s ease,
+              background 0.25s ease, border-color 0.25s ease;
+}
+.gb-quote-box.gb-ready .gb-continue {
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
+}
+.gb-continue:hover {
+  background: rgba(255, 250, 240, 0.12);
+  border-color: rgba(255, 250, 240, 0.7);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .gb-quote-box, .gb-quote-box.gb-visible, .gb-continue {
+    transition: opacity 0.4s ease;
+    transform: translateX(-50%);
+  }
+  .gb-quote-box.gb-ready .gb-continue { transform: none; }
+}

@@ -1,5 +1,6 @@
 // ==================== POMODORO MODULE ====================
 import { formatTime, formatStudyDuration, saveAllAsync, studySecs } from './storage.js';
+import { GalleryBreak } from './gallery-break.js';
 
 // ---- Pomodoro-specific state (module-scoped) ----
 let timerInterval, secondsLeft, totalSecondsForState, pomoState = 'IDLE',
@@ -37,6 +38,7 @@ document.addEventListener('visibilitychange', async () => {
     } else {
         document.getElementById('pomo-beaker-fill').style.height = `${percent}%`;
     }
+    if (pomoState === 'BREAK') GalleryBreak.setProgress(percent / 100);
 
     // If the timer should have finished while we were away, trigger end now
     if (remaining <= 0 && !timerEndTriggered) {
@@ -160,6 +162,10 @@ export function executeTimerTick() {
             document.getElementById('pomo-beaker-fill').style.height = `${percent}%`;
         }
 
+        // Gallery Break: the burn reveal tracks break progress 1:1 (pause
+        // stops the ticks, freezing the burn mid-char).
+        if (pomoState === 'BREAK') GalleryBreak.setProgress(percent / 100);
+
         // Study time tracking (counts real seconds passed since last tick)
         if (pomoState === 'STUDY') {
             // We don't rely on tick frequency, so we just increment once per call.
@@ -200,12 +206,20 @@ function handleTimerEnd() {
         }
     } else if (pomoState === 'BREAK') {
         currentSession++;
-        showTimerNotification(
-            '☕ Break Over',
-            '⚡',
-            `Ready for session ${currentSession} of ${totalSessions}?`,
-            startStudyAfterBreakPopup
-        );
+        // Gallery Break replaces the "☕ Break Over" popup: full reveal → quote
+        // → Continue → reverse burn → next study session. Falls back to the
+        // classic popup if the overlay never came up (defensive).
+        if (GalleryBreak.isActive()) {
+            playBell();
+            GalleryBreak.finish(startStudyAfterBreakPopup);
+        } else {
+            showTimerNotification(
+                '☕ Break Over',
+                '⚡',
+                `Ready for session ${currentSession} of ${totalSessions}?`,
+                startStudyAfterBreakPopup
+            );
+        }
     }
 }
 
@@ -348,6 +362,10 @@ export function transitionToBreak() {
     timerStartTime = Date.now();
     timerEndTriggered = false;
     timerInterval = setInterval(executeTimerTick, 1000);
+
+    // Gallery Break: start the burn reveal — whatever is open on screen
+    // begins to char away from the center, revealing the painting.
+    try { GalleryBreak.begin(); } catch (e) { console.warn('GalleryBreak failed to start', e); }
 }
 
 export function pauseTimer() {
@@ -388,6 +406,7 @@ export function resumeTimer() {
 export function quitTimer() {
     clearInterval(timerInterval);
     saveAllAsync().catch(console.error);
+    GalleryBreak.abort();
     document.getElementById('timer-notify-modal').classList.remove('active');
     _pomoPendingAction = null;
     timerEndTriggered = true; // prevent handleTimerEnd from firing later
@@ -397,6 +416,7 @@ export function quitTimer() {
 
 export function resetPomoUI() {
     pomoState = 'IDLE';
+    GalleryBreak.abort();
     document.getElementById('timer-notify-modal').classList.remove('active');
     _pomoPendingAction = null;
     document.getElementById('pomo-mini-widget').classList.add('hidden');
@@ -427,6 +447,7 @@ export function resetPomoUI() {
 export function skipBreak() {
     clearInterval(timerInterval);
     saveAllAsync().catch(console.error);
+    GalleryBreak.abort();   // skipped breaks don't get the reveal
     // If more sessions remain, go to next study; otherwise finish
     if (currentSession < totalSessions) {
         currentSession++;

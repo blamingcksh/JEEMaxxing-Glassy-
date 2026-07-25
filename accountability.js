@@ -45,15 +45,20 @@ const TUNING = {
   maxDecayForgiveness: 5,
   maxAbsenceDebt: 3,
 
-  // Collateral
+  // Collateral — rebalanced v2.1: the old linear 25→90% curve paid ~79%
+  // for a 30-ELO stake with a trivial stretch, making contracts free money.
+  // Now: convex curve (must near-max the stake to approach bonusMax), max
+  // accrual halved, escrow cap below the stake (max profit 0.8× what you
+  // risk losing), and high-bonus contracts demand real overperformance.
   minStake: 5,
   maxStakeAbs: 40,
   maxStakePctOfElo: 0.03,
   eloFloor: 1000,
-  bonusMin: 0.25,
-  bonusMax: 0.90,
-  maxEscrowBonusMult: 1.25,
-  stretchExponent: 0.25,       // stretchTarget = target × (1 + (bonus−0.25) × this)
+  bonusMin: 0.10,
+  bonusMax: 0.50,
+  bonusCurveExp: 2.0,          // bonus = min + (stake/max)^exp × (max−min)
+  maxEscrowBonusMult: 0.80,
+  stretchExponent: 0.60,       // stretchTarget = target × (1 + (bonus−bonusMin) × this)
 
   // Shields
   cleanDaysPerShield: 5,
@@ -490,7 +495,10 @@ function _maxStakeForSubject(subj) {
 function _bonusPctForStake(stake, maxStake) {
   if (maxStake <= 0) return TUNING.bonusMin;
   const ratio = _clamp(stake / maxStake, 0, 1);
-  return _clamp(TUNING.bonusMin + ratio * (TUNING.bonusMax - TUNING.bonusMin), TUNING.bonusMin, TUNING.bonusMax);
+  // Convex ramp: a half-max stake earns well under half the bonus range,
+  // so approaching bonusMax requires genuinely maxing out the stake.
+  const curved = Math.pow(ratio, TUNING.bonusCurveExp || 1);
+  return _clamp(TUNING.bonusMin + curved * (TUNING.bonusMax - TUNING.bonusMin), TUNING.bonusMin, TUNING.bonusMax);
 }
 
 function _stretchTargetForBonus(requiredTarget, bonusPct) {
@@ -584,13 +592,16 @@ function openCollateral(subj, stakeAmount) {
  * Accrues escrow bonus on positive ELO deltas. Does NOT modify rawDelta.
  * Returns the accrued amount (for UI toast).
  */
-function accrueEscrowBonus(subj, rawDelta) {
+function accrueEscrowBonus(subj, rawDelta, modeMult = 1) {
   if (!_state || !_state.collateral.active) return 0;
   const c = _state.collateral.active;
   if (c.subject !== subj || c.status !== 'active') return 0;
   if (rawDelta <= 0) return 0;
 
-  const bonus = rawDelta * c.bonusPct;
+  // modeMult: practice-mode escrow multiplier (hardcore 2× legendary drop
+  // rate). Applied INSIDE the engine so the stored escrow matches what the
+  // toast reports — previously app.js multiplied only the display value.
+  const bonus = rawDelta * c.bonusPct * (modeMult || 1);
   const room = Math.max(0, c.maxEscrowBonus - c.escrowBonus);
   const accrued = Math.min(bonus, room);
 

@@ -1269,6 +1269,14 @@ export function addErrorBlock() {
         targetTimeMins: 5,
         isMastered: false,
         historyLogs: [],
+        // qElo schema — stamped at creation so a same-session drawer solve
+        // routes through the engine identically to a post-reload one
+        // (migrateQuestionBankSR would otherwise backfill these on next load).
+        qElo: 1200,
+        qEloSource: 'uncalibrated',
+        qEloStampedBy: null,
+        qEloStampedAt: null,
+        solveCount: 0,
     };
 
     AppState.questionBank.push(newErrorQ);
