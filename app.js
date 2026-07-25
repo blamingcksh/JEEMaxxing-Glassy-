@@ -4216,11 +4216,9 @@ export function practiceSubmit() {
             _getChapterHealth(AppState.currentQ.subject, AppState.currentQ.chapter),
             AppState.currentQ
         );
-      } catch (_eloErr) {
+     } catch (_eloErr) {
      console.error('Elo migration fault:', _eloErr);
  }
- try { if (window.__forestGrowth && window.__forestGrowth.stamp) window.__forestGrowth.stamp(AppState.currentQ, AppState.currentQ.subject, _eloResult); } catch (_st) {}
- 
  if (_eloResult) applyDifficulty(AppState.currentQ, AppState.currentQ.subject, _eloResult);
  if (AppState.currentQ && AppState.currentQ.status === 'solved') stampPlantCum(AppState.currentQ, AppState.currentQ.subject);
  saveAllAsync().catch(console.error);
@@ -4288,9 +4286,7 @@ export function addTextQuestionFollowUp() {
                 _getChapterHealth(AppState.currentQ.subject, AppState.currentQ.chapter),
                 AppState.currentQ
             );
-              } catch (_e) { console.error('Elo migration fault:', _e); }
-     try { if (window.__forestGrowth && window.__forestGrowth.stamp) window.__forestGrowth.stamp(AppState.currentQ, AppState.currentQ.subject, _eloRes); } catch (_st) {}
-    
+             } catch (_e) { console.error('Elo migration fault:', _e); }
      applyDifficulty(AppState.currentQ, AppState.currentQ.subject, _eloRes);
      stampPlantCum(AppState.currentQ, AppState.currentQ.subject);
      saveAllAsync().catch(console.error);
@@ -4325,9 +4321,7 @@ export function addTextQuestionFollowUp() {
                 _getChapterHealth(AppState.currentQ.subject, AppState.currentQ.chapter),
                 AppState.currentQ
             );
-              } catch (_e) { console.error('Elo migration fault:', _e); }
-     try { if (window.__forestGrowth && window.__forestGrowth.stamp) window.__forestGrowth.stamp(AppState.currentQ, AppState.currentQ.subject, _eloRes); } catch (_st) {}
-     
+             } catch (_e) { console.error('Elo migration fault:', _e); }
      applyDifficulty(AppState.currentQ, AppState.currentQ.subject, _eloRes);
      saveAllAsync().catch(console.error);
      if (AppState.bountyMode) {
@@ -5598,7 +5592,6 @@ window.bounty = AppState.bounty;
 // ── Forest sync fix: expose live state safely ─────────────────────────────
 window.AppState = AppState;
 window.solved = solved;
-window.studySecs = studySecs;
 
 try {
   Object.defineProperty(window, 'questionBank', {

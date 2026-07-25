@@ -304,5 +304,4 @@ function boot(){
 }
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot);else boot();
 window.__forestBG={show:function(){setEnabled(true);},hide:function(){setEnabled(false);},setOpacity:setOpacity,refresh:function(){if(built)rebuildIfNeeded(true);}};
-window.__forestBgAdopt=function(){return{THREE:THREE,scene:scene,env:env,heightAt:heightAt};};
 })();
