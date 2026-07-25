@@ -28,6 +28,12 @@ import {
     registerUiCallbacks, changeCount,
     // ── SR due-status helper (used by the cat-banner vulnerability scanner) ──
     getDueStatus,
+    // ── Cognitive MMR band system (pre-ELO schema) ──
+    ELO_BANDS,
+    BAND_TARGET_TIME,
+    ELO_GEM_STAMP_TUNING,
+    CALIBRATED_SOLVE_THRESHOLD,
+    getEloBand,
 } from './storage.js';
 
 import {
@@ -1178,6 +1184,8 @@ export function openChapterDetail(ch) {
     document.getElementById('detail-chapter-name').innerHTML =
         `${ch} <span style="font-size:14px; color:#8a8ad3;">(${AppState.currentSubject})</span>`;
     showPracticeSubview('practice-chapter-detail-view');
+    // NEW (Flow/Hardcore): mount the two glowing mode buttons on every chapter entry.
+    _renderModeButtonsIntoChapterDetail();
 }
 
 export function renderChaptersList() {
@@ -2138,6 +2146,7 @@ IMPORTANT – MULTI‑ANSWER QUESTIONS:
 }
 
 export function saveAllQuestions() {
+    const bankBeforeLength = AppState.questionBank.length;
     for (let i = 0; i < AppState.extractedItems.length; i++) {
         let q = AppState.extractedItems[i];
         const manualInput = document.getElementById(`manual-answer-${i}`);
@@ -2166,8 +2175,16 @@ export function saveAllQuestions() {
 
         let newQ = {
             id: crypto.randomUUID ? crypto.randomUUID() : (Date.now() + i).toString(),
-            subject: AppState.currentSubject,
-            chapter: AppState.currentChapter,
+            // ── Subject/chapter fallback chain ──
+            // When the question came from a Gemini Gem JSON paste, the
+            // pre-ELO schema carries its own subject/chapter stamps. Honour
+            // those first, only falling back to the user's current session
+            // context when the gem stamp is missing. Without this chain, a
+            // user pasting a Gem export for "Rotational Mechanics" while
+            // sitting in chapter "Kinematics" would silently retag their
+            // imported questions as Kinematics.
+            subject: (typeof q.subject === 'string' && q.subject) ? _normalizeSubjectKey(q.subject) : AppState.currentSubject,
+            chapter: (typeof q.chapter === 'string' && q.chapter.trim()) ? q.chapter.trim() : AppState.currentChapter,
             imageDataUrl: q.imageDataUrl,
             diagramImageUrl: q.diagramImageUrl || null,
             extractedText: q.extractedText || "",
@@ -2184,10 +2201,46 @@ export function saveAllQuestions() {
             // qElo ever shoots >600 pts past the chapter baseline. ──
             qElo: (typeof q.qElo === 'number' && isFinite(q.qElo)) ? q.qElo : _computeDefaultQEloForCurrentChapter(),
             isAnomaly: false,
+            // ── NEW (pre-ELO schema): carry provenance from processGemTextDump
+            // so calculateEloMigration knows whether to trust qElo immediately
+            // (gem-stamped) or wait for the legacy warmup (uncalibrated). ──
+            qEloSource: q.qEloSource || 'uncalibrated',
+            qEloStampedBy: q.qEloStampedBy || null,
+            qEloStampedAt: q.qEloStampedAt || null,
+            solveCount: 0,
+            lastSolvedAt: null,
+            tags: Array.isArray(q.tags) ? q.tags.slice() : [],
+            targetTimeMins: (typeof q.targetTimeMins === 'number' && q.targetTimeMins > 0)
+                ? q.targetTimeMins
+                : (typeof q.qElo === 'number' ? _eloBandTargetTime(q.qElo) : 5),
+            stampBatchSuspiciousDistribution: !!q.stampBatchSuspiciousDistribution,
+            stampBatchSuspiciousStdev: !!q.stampBatchSuspiciousStdev,
+            difficulty: q.difficulty || null,
         };
         AppState.questionBank.push(newQ);
     }
     saveAllAsync().catch(console.error);
+    // ── Auto-navigate: if the freshly imported batch landed on a different
+    // (subject, chapter) than the user is currently viewing, jump there so
+    // the chapter-detail list reflects the new arrivals instead of looking
+    // "empty". Mirrors the "where did my questions go?" support ticket. ──
+    const firstNew = AppState.questionBank[bankBeforeLength];
+    if (firstNew && firstNew.subject && firstNew.chapter &&
+        (firstNew.subject !== AppState.currentSubject ||
+         firstNew.chapter !== AppState.currentChapter)) {
+        AppState.currentSubject  = firstNew.subject;
+        AppState.currentChapter  = firstNew.chapter;
+        AppState.currentFilter  = 'all';
+        const detail = document.getElementById('detail-chapter-name');
+        if (detail) detail.innerHTML =
+            `${AppState.currentChapter} <span style="font-size:14px; color:#8a8ad3;">(${AppState.currentSubject})</span>`;
+        renderChaptersList();
+        showPracticeSubview('practice-chapter-detail-view');
+        _renderModeButtonsIntoChapterDetail();
+        showQuestionList();
+        console.log('[saveAllQuestions] Auto-navigated to fresh-imported chapter:',
+            firstNew.subject, '/', firstNew.chapter);
+    }
     // ── P2P Leaderboard: broadcast telemetry on local question import ──
     // Mirrors the practiceSubmit() hook. Fire-and-forget; the arena packet
     // carries only the 4 sanctioned fields (elo/variance/studyHours/ts) and
@@ -2271,6 +2324,69 @@ export function switchIngestionTrack(track) {
 function sanitizeGemTextDump(rawInput) {
     if (!rawInput) return "";
 
+    // ─────────────────────────────────────────────────────────────────────
+    // Schema-drift tolerance: rename common aliases → canonical fields so the
+    // existing pre-cleaners and the processGemTextDump split can stay strict
+    // on ONE key per field. The user can copy/paste JSON from any Gem variant
+    // (custom AI Studio, native Gemini, manual export, third-party feeds) and
+    // the pipeline still ingests without errors.
+    // ─────────────────────────────────────────────────────────────────────
+    // Three categories handled:
+    //   1. Question text:  text|question|stem|body|problem → "extractedText"
+    //   2. Answer key:     answer|correctOption|correct|sol → "correctAnswer"
+    //   3. Solution/work:  explanation|reasoning|work|derivation → "solution"
+    // Plus a single-letter parenthetical unwrap: "(B)" → "B" so embedded
+    // option letters collapse to canonical "B" before MCQ matching.
+    // ─────────────────────────────────────────────────────────────────────
+    const _SCHEMA_TEXT_ALIASES     = ['text', 'question', 'stem', 'body', 'problem'];
+    const _SCHEMA_ANSWER_ALIASES   = ['answer', 'correctOption', 'correct', 'sol'];
+    const _SCHEMA_SOLUTION_ALIASES = ['explanation', 'reasoning', 'work', 'derivation'];
+    function _aliasRenameStep(input, canonical, aliasList) {
+        const renamed = {};
+        const re = new RegExp(
+            '"(' + canonical + '|' + aliasList.join('|') + ')"\\s*:\\s*"',
+            'g'
+        );
+        input = input.replace(re, (match, key) => {
+            if (key === canonical) return match;
+            renamed[key] = (renamed[key] || 0) + 1;
+            return '"' + canonical + '": "';
+        });
+        return { input, renamed };
+    }
+    let _s1 = _aliasRenameStep(rawInput, 'extractedText', _SCHEMA_TEXT_ALIASES);
+    rawInput = _s1.input;
+    let _s2 = _aliasRenameStep(rawInput, 'correctAnswer', _SCHEMA_ANSWER_ALIASES);
+    rawInput = _s2.input;
+    let _s3 = _aliasRenameStep(rawInput, 'solution', _SCHEMA_SOLUTION_ALIASES);
+    rawInput = _s3.input;
+    // ── Single-letter parenthetical unwrap: "(B)" → "B" ──
+    // Only matches exactly one uppercase letter or single digit wrapped in
+    // parens. Leaves values like "(x+1)" or "(P+Q)" untouched. Applies AFTER
+    // the answer rename so it catches both renamed `answer` keys AND canonical
+    // `correctAnswer` keys from the source.
+    rawInput = rawInput.replace(
+        /"correctAnswer"\s*:\s*"\(((?:[A-Z]|[0-9]))\)"/g,
+        '"correctAnswer": "$1"'
+    );
+    const _allRenamed = Object.assign({}, _s1.renamed, _s2.renamed, _s3.renamed);
+    const _driftKeys = Object.keys(_allRenamed);
+    if (_driftKeys.length > 0) {
+        const parts = _driftKeys.map(k => {
+            const targets = [];
+            if (_s1.renamed[k]) targets.push('"extractedText"\u00d7' + _s1.renamed[k]);
+            if (_s2.renamed[k]) targets.push('"correctAnswer"\u00d7' + _s2.renamed[k]);
+            if (_s3.renamed[k]) targets.push('"solution"\u00d7' + _s3.renamed[k]);
+            return k + '\u2192' + targets.join(',');
+        });
+        console.warn(
+            '[sanitizeGemTextDump] Schema drift detected: ' + _driftKeys.length + ' alias key(s). ' +
+            '[' + parts.join(' | ') + ']. Auto-renamed to canonical keys. ' +
+            'Update your Gem instructions to emit extractedText/correctAnswer/solution ' +
+            'for clean parsing.'
+        );
+    }
+
     // Step 1: Repair unescaped inner quotes inside "extractedText" properties globally
     rawInput = rawInput.replace(/"extractedText"\s*:\s*"([\s\S]*?)"\s*(?=,\s*"options"|,\s*"correctAnswer"|,\s*"type"|,\s*"solution"|,\s*\}|\s*\})/g, (match, content) => {
         let cleaned = content.replace(/\\"/g, '\uEAEA').replace(/"/g, '\\"').replace(/\uEAEA/g, '\\"');
@@ -2322,8 +2438,15 @@ export async function processGemTextDump() {
     showLoading("Running structural text compiler... Sanitizing LaTeX math symbols...");
 
     try {
+        // ── Step 0: schema-drift sanitizer ──
+        // sanitizeGemTextDump rewrites common alias keys to canonical ones
+        // (stem→extractedText, answer→correctAnswer, explanation→solution), unwraps
+        // "(B)"→"B", and repairs unescaped inner quotes inside string values.
+        // It MUST run before the split below or the splitter finds zero
+        // "extractedText" anchors and the throw fires on every drift-bearing paste.
+        const sanitizedInput = sanitizeGemTextDump(terminalInput);
         // Step 1: Isolate individual question segments using the unique "extractedText" key as a boundary anchor
-        const segments = terminalInput.split(/"extractedText"\s*:\s*"/g);
+        const segments = sanitizedInput.split(/"extractedText"\s*:\s*"/g);
         if (segments.length <= 1) {
             throw new Error("Could not find any structural 'extractedText' keys in the pasted payload.");
         }
@@ -2396,6 +2519,41 @@ export async function processGemTextDump() {
                 solution = solution.replace(/\\+n/g, '\n').replace(/\\+/g, '\\');
             }
 
+            // ── Build a synthetic rawQ from the segment metadata so the qElo-stamping
+            // block below can reference rawQ.qElo / targetTimeMins / tags / model
+            // without throwing ReferenceError. The original parser extracted only
+            // extractedText / options / correctAnswer / type / solution and then
+            // jumped straight to referencing rawQ fields that never existed. Build
+            // them here so the existing stamping flow finally works on Gem-stamped
+            // payloads (the schema drift fix above keeps these named canonical).
+            function _extractStringField(meta, key) {
+                const m = meta.match(new RegExp('"' + key + '"\\s*:\\s*"([^"\\\\]*(?:\\\\.[^"\\\\]*)*)"'));
+                return m && m[1] ? m[1] : undefined;
+            }
+            function _extractNumberField(meta, key) {
+                const m = meta.match(new RegExp('"' + key + '"\\s*:\\s*(-?\\d+(?:\\.\\d+)?)'));
+                const v = m ? parseFloat(m[1]) : NaN;
+                return Number.isFinite(v) ? v : undefined;
+            }
+            function _extractStringArrayField(meta, key) {
+                const m = meta.match(new RegExp('"' + key + '"\\s*:\\s*\\[([\\s\\S]*?)\\]'));
+                if (!m) return undefined;
+                const inner = m[1];
+                const strMatches = inner.match(/"((?:[^"\\\\]|\\\\.)*)"/g);
+                if (!strMatches) return [];
+                return strMatches.map(s => s.replace(/^"|"$/g, '').replace(/\\\\"/g, '"').trim()).filter(Boolean);
+            }
+            const rawQ = {
+                id:             _extractStringField(metadata, 'id'),
+                subject:        _extractStringField(metadata, 'subject'),
+                chapter:        _extractStringField(metadata, 'chapter'),
+                qElo:           _extractNumberField(metadata, 'qElo'),
+                targetTimeMins: _extractNumberField(metadata, 'targetTimeMins'),
+                difficulty:     _extractStringField(metadata, 'difficulty'),
+                tags:           _extractStringArrayField(metadata, 'tags'),
+                model:          _extractStringField(metadata, 'model'),
+            };
+
             // Auto-fallback type classification logic if not explicitly returned by the Gem
             if (!type) {
                 if (options.length > 0) {
@@ -2407,19 +2565,72 @@ export async function processGemTextDump() {
                 }
             }
 
+            // ── NEW (pre-ELO schema): honour the Gemini Gem's qElo stamp and
+            // provenance metadata. When the Gem emits qElo/targetTimeMins/tags
+            // we trust them as the canonical implied-difficulty rating and
+            // mark the question as gem-stamped so calculateEloMigration uses
+            // the delta-based reward from solve #1 (no 600-iteration warmup).
+            // When the Gem omits qElo we fall back to the chapter average and
+            // leave qEloSource='uncalibrated' so the legacy warmup runs. ──
+            const gemQElo = (typeof rawQ.qElo === 'number' && isFinite(rawQ.qElo) && rawQ.qElo >= 800 && rawQ.qElo <= 2550)
+                ? Math.round(rawQ.qElo)
+                : _computeDefaultQEloForCurrentChapter();
+            const gemTargetTime = (typeof rawQ.targetTimeMins === 'number' && rawQ.targetTimeMins > 0 && rawQ.targetTimeMins <= 60)
+                ? Math.round(rawQ.targetTimeMins)
+                : _eloBandTargetTime(gemQElo);
+            const gemSource = (typeof rawQ.qElo === 'number' && isFinite(rawQ.qElo) && rawQ.qElo >= 800 && rawQ.qElo <= 2550)
+                ? 'gem-stamped'
+                : 'uncalibrated';
+            const gemStampedBy = (typeof rawQ.model === 'string' && rawQ.model.trim()) ? rawQ.model.trim().slice(0, 64) : null;
+            const gemStampedAt = new Date().toISOString();
+            const gemTags = Array.isArray(rawQ.tags)
+                ? rawQ.tags.filter(t => typeof t === 'string').map(t => t.trim()).filter(Boolean).slice(0, 5)
+                : [];
+
             parsedItems.push({
-                imageDataUrl: null, 
+                imageDataUrl: null,
                 questionOnlyDataUrl: null,
-                diagramImageUrl: null, 
+                diagramImageUrl: null,
                 extractedText: extractedText,
                 options: options,
                 correctAnswer: correctAnswer,
                 type: type,
                 timeTaken: 0,
                 solution: solution,
-                qElo: _computeDefaultQEloForCurrentChapter(), 
-                isAnomaly: false
+                qElo: gemQElo,
+                targetTimeMins: gemTargetTime,
+                isAnomaly: false,
+                qEloSource: gemSource,
+                qEloStampedBy: gemStampedBy,
+                qEloStampedAt: gemStampedAt,
+                tags: gemTags,
+                difficulty: typeof rawQ.difficulty === 'string' ? rawQ.difficulty : null,
+                chapter: sanitizeChapterName(rawQ.chapter),
+                subject: _normalizeSubjectKey(rawQ.subject || AppState.currentSubject || 'physics'),
             });
+        }
+
+        // ── NEW: anti-cheat distribution check per-chapter ────────────────
+        // If ≥80% of a chapter's ingest batch lands in T6-T7 (elite/olympiad)
+        // AND the chapter's prior running avg was below T3, flag the batch
+        // as suspicious — Gem-stamped qElo might be inflated to make the
+        // chapter look elite on the leaderboard. Also detect low-stdev
+        // automation (stdDev < 15 over >20 questions = same-script timing).
+        const chapterStats = _auditGemBatchByChapter(parsedItems);
+        for (const it of parsedItems) {
+            const subjKey = _normalizeSubjectKey(it.subject || 'unknown');  // match _auditGemBatchByChapter bucket generator
+            const key = (it.chapter || '') + '|' + subjKey;
+            const stat = chapterStats[key];
+            if (stat && stat.suspiciousDistribution) it.stampBatchSuspiciousDistribution = true;
+            if (stat && stat.suspiciousStdev) it.stampBatchSuspiciousStdev = true;
+            // Chapter-ceiling guard: if stamped qElo is >600 above the
+            // chapter's prior avg, the engine will auto-quarantine (isAnomaly)
+            // — also surface the warning here so the user sees it in preview.
+            const priorAvg = _getChapterAvgElo(it.subject, it.chapter);
+            if (typeof it.qElo === 'number' && Math.abs(it.qElo - priorAvg) > 600) {
+                it.qElo = Math.round(priorAvg + 600 * Math.sign(it.qElo - priorAvg));
+                it.tags = (it.tags || []).concat(['over-chapter-ceiling']);
+            }
         }
 
         if (parsedItems.length === 0) {
@@ -3427,6 +3638,449 @@ function _computeGlobalMetaMMR(eP, eC, eM) {
  *
  * Synchronous (execution-blocking). Computes structural modifications in-place.
  */
+// ════════════════════════════════════════════════════════════════════════════
+//  PRE-ELO SCHEMA HELPERS  (Delta-Based Reward Branch)
+// ════════════════════════════════════════════════════════════════════════════
+//
+//  When a question's qElo is already trusted — either because Gemini
+//  stamped it during ingestion (qEloSource = 'gem-stamped') OR because the
+//  engine has accumulated enough solves for the legacy R_perf warmup to
+//  have settled into a stable value (qEloSource = 'learned' and
+//  solveCount ≥ CALIBRATED_SOLVE_THRESHOLD) — we replace the long warmup
+//  formula with a much simpler delta-based reward. The math is the
+//  canonical ELO expected-score S-curve:
+//
+//     P_win = 1 / (1 + 10^((Q − E) / 400))
+//     rawSubjectDelta = K_user · (S − P_win) · timeMult
+//     qEloDrift      = K_q    · ((1 − S) − (1 − P_win))
+//
+//  where S = score (1 for correct, 0 for wrong, partial allowed). The
+//  formula is naturally stingy when a favourite wins (high E, low Q →
+//  P_win ≈ 0.9 → small gain) and rewarding when an underdog wins (low E,
+//  high Q → P_win ≈ 0.15 → big gain). Mis-fires on easy questions get an
+//  extra stinginess multiplier because missing easy stuff is deadlier.
+//
+
+/** Map an integer qElo to its band's recommended targetTimeMins. */
+function _eloBandTargetTime(qElo) {
+    const b = getEloBand(qElo);
+    if (!b) return 5; // safe fallback (matches storage.js default)
+    const map = { T1_FOUNDATION: BAND_TARGET_TIME.T1, T2_CORE_MAINS: BAND_TARGET_TIME.T2,
+                  T3_STD_MAINS: BAND_TARGET_TIME.T3, T4_ADV_EASY: BAND_TARGET_TIME.T4,
+                  T5_PAPER_ADV: BAND_TARGET_TIME.T5, T6_ELITE: BAND_TARGET_TIME.T6,
+                  T7_OLYMP: BAND_TARGET_TIME.T7 };
+    return map[b] || 5;
+}
+
+/** Trim and null-guard a chapter name coming from a raw Gem emit. */
+function sanitizeChapterName(name) {
+    if (typeof name !== 'string') return null;
+    const trimmed = name.trim().slice(0, 64);
+    return trimmed.length > 0 ? trimmed : null;
+}
+
+/**
+ * Walk an ingested batch and group by chapter. For each chapter, compute
+ * the elite-heavy ratio and the population standard deviation of stamped
+ * qElo values. Flag any chapter that:
+ *   1. has ≥80% T6-T7 entries AND prior chapter running avg ≤1549 (T3 ceiling),
+ *   2. has ≥20 entries with stdDev(qElo) < 15 (automation fingerprint).
+ * Returns a map keyed by `subject|chapter` so processGemTextDump can stamp
+ * each item in-place.
+ */
+function _auditGemBatchByChapter(items) {
+    const out = {};
+    if (!Array.isArray(items) || !items.length) return out;
+    // group
+    const buckets = {};
+    for (const it of items) {
+        const subj = _normalizeSubjectKey(it.subject || 'unknown');  // 'unknown' surfaces normalization bugs loudly
+        const ch   = (it.chapter || '').toString().trim();
+        if (!ch) continue;
+        const key = subj + '|' + ch;
+        if (!buckets[key]) buckets[key] = { subject: subj, chapter: ch, qElos: [] };
+        if (typeof it.qElo === 'number') buckets[key].qElos.push(it.qElo);
+    }
+    for (const key of Object.keys(buckets)) {
+        const b = buckets[key];
+        if (!b.qElos.length) continue;
+        const eliteCount = b.qElos.filter(q => q >= 2100).length;
+        const eliteShare = eliteCount / b.qElos.length;
+        const priorAvg = _getChapterAvgElo(b.subject, b.chapter);
+        let suspiciousDistribution = false;
+        if (eliteShare >= 0.80 && priorAvg <= 1549 && b.qElos.length >= 3) {
+            suspiciousDistribution = true;
+        }
+        // stdDev across the batch
+        let suspiciousStdev = false;
+        if (b.qElos.length >= 20) {
+            const mean = b.qElos.reduce((a, c) => a + c, 0) / b.qElos.length;
+            const variance = b.qElos.reduce((a, c) => a + (c - mean) * (c - mean), 0) / b.qElos.length;
+            const stddev = Math.sqrt(variance);
+            if (stddev < 15) suspiciousStdev = true;
+        }
+        out[key] = { suspiciousDistribution, suspiciousStdev, priorAvg, eliteShare };
+    }
+    return out;
+}
+
+/**
+ * True iff the question's qElo is sufficiently trusted to use the
+ * delta-based reward branch. gem-stamped trusts from solve #1; legacy
+ * uncalibrated questions need CALIBRATED_SOLVE_THRESHOLD real solves.
+ */
+function _isQuestionEloCalibrated(q) {
+    if (!q) return false;
+    if (q.qEloSource === 'gem-stamped') return true;
+    if (q.qEloSource === 'learned' && (q.solveCount || 0) >= CALIBRATED_SOLVE_THRESHOLD) return true;
+    return false;
+}
+
+/** Look up the matching band target time in seconds. */
+function _eloTargetSeconds(q) {
+    const mins = (typeof q.targetTimeMins === 'number' && q.targetTimeMins > 0) ? q.targetTimeMins : _eloBandTargetTime(q.qElo || 1200);
+    return mins * 60;
+}
+
+/**
+ * Canonical ELO reward for a trusted-qElo solve. Returns the integer
+ * subject-ELO delta and the integer qElo drift. Math is symmetric and
+ * self-balancing: a 4.0x ELO gap favourite with low qElo wins get tiny
+ * gains (preventing point-farming), while low-ELO players beating hard
+ * qElos get hefty rewards (encouraging stretch). Time multiplier
+ * preserves the chemistry slow-penalty and the physics calculation
+ * buffer from the legacy code.
+ */
+function _deltaBasedUserAndQuestionReward(userElo, qElo, isCorrect, subject, actualSecs, targetSecs) {
+    const S = typeof isCorrect === 'number' ? isCorrect : (isCorrect ? 1 : 0);
+    const T = ELO_GEM_STAMP_TUNING;
+    // Standard ELO win probability for the user
+    const P_win = 1 / (1 + Math.pow(10, (qElo - userElo) / 400));
+    const P_q_win = 1 - P_win;
+    // Temporal divergence with subject-specific buffers (mirror legacy)
+    let tau = Math.max(T.timeMin, (typeof actualSecs === 'number' && actualSecs > 0 ? actualSecs : targetSecs) / Math.max(1, targetSecs));
+    if (subject === 'physics') tau *= T.physicsTauBuffer;
+    // Time multiplier: faster-than-target amplifies wins; slower amplifies losses.
+    // Practice mode (Flow / Hardcore) reshapes the sweet spot — see _modeTimeMultiplier.
+    const timeMult = _modeTimeMultiplier(S >= 0.5 ? 1 : 0, tau, AppState.practiceFlowMode || 'standard');
+    // User ELO delta — full rating swing
+    let rawSubjectDelta = T.K_user * (S - P_win) * timeMult;
+    // Stinginess: missing an easier-than-me question should hurt more
+    // (high P_win × wrong outcome = worse than missing a hard one)
+    if (S === 0) rawSubjectDelta *= (P_win >= 0.7 ? T.misfireExtraMult : 1.0);
+    rawSubjectDelta = Math.round(rawSubjectDelta);
+    // Question qElo drift — tiny K_q. Question "wins" when user loses (1-S),
+    // and matches ~the magnitude the system expects for the user's win probability.
+    const qEloDrift = Math.round(T.K_q * ((1 - S) - P_q_win));
+    return { rawSubjectDelta, qEloDrift, P_win };
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+//  PRACTICE MODE HELPERS  (Flow State vs Hardcore / Overclock)
+// ════════════════════════════════════════════════════════════════════════════
+//
+//  Mode-aware reward math + picker. The mode is stored on AppState.practiceFlowMode
+//  and persists across reloads. The two big buttons in chapter-detail view hand
+//  the user a one-tap, hands-off cadence (Flow) or a high-stakes boss-fight
+//  (Hardcore). The picker rebuilds AppState.practiceQuestions via
+//  _pickQuestionForMode() whenever the user enters a mode or finishes a solve.
+
+/** Canonical P_win (same formula the delta branch uses). */
+function _pWinForQ(userElo, qElo) {
+    return 1 / (1 + Math.pow(10, (qElo - userElo) / 400));
+}
+
+/**
+ * Mode-aware time-curve multiplier. For wins: smaller τ (faster) → bigger bonus,
+ * but the sweet spot depends on the mode (Hardcore rewards τ=0.45 more than
+ * Flow rewards τ=0.6). For losses: slow solves amplify penalty, with Hardcore
+ * punishing slow-wrong harder than Flow.
+ */
+function _modeTimeMultiplier(S, tau, mode) {
+    const cfg = MODE_TUNING[mode] || MODE_TUNING.standard;
+    if (S === 1) {
+        return 1 / (1 + Math.max(0, tau - cfg.winSweetSpot));
+    }
+    // Failure: slow penalty below grace threshold + slow amplification above
+    if (tau <= cfg.lossFastGrace) return 1 + 0.15 * Math.max(0, cfg.lossFastGrace - tau);
+    return 1 + 0.4 * Math.max(0, tau - cfg.lossFastGrace);
+}
+
+/**
+ * Pick a chapter-local question whose P_win falls inside the mode's window,
+ * with side preferences for low solveCount (warm handoff) and tag diversity.
+ * Returns the question or null if the chapter simply has no candidates even
+ * after widening the window.
+ */
+function _pickQuestionForMode(subject, chapter, mode) {
+    if (!PRACTICE_MODES.includes(mode) || mode === 'standard') return null;
+    const cfg = MODE_TUNING[mode];
+    const bank = AppState.questionBank.filter(q =>
+        q.subject === subject && q.chapter === chapter &&
+        q.status !== 'solved' &&    // unsolved only (mirror legacy practice)
+        typeof q.qElo === 'number' && isFinite(q.qElo) &&
+        !q.isAnomaly
+    );
+    if (!bank.length) return null;
+    const userElo = (AppState.elo && AppState.elo[subject]) || 1200;
+    const hasMin = (q) => cfg.minQeloFloor ? q.qElo >= cfg.minQeloFloor : true;
+
+    // Two-pass scan: strict window → fallback window.
+    function scan(lo, hi, requireFloor) {
+        const candidates = bank.filter(q => {
+            const P = _pWinForQ(userElo, q.qElo);
+            return P >= lo && P <= hi && (!requireFloor || hasMin(q));
+        });
+        if (!candidates.length) return null;
+        // Sort by smallest solveCount then most-stale; break ties randomly.
+        candidates.sort((a, b) => {
+            const sa = (a.solveCount || 0) - (b.solveCount || 0);
+            if (sa !== 0) return sa;
+            const ta = a.lastSolvedAt ? new Date(a.lastSolvedAt).getTime() : 0;
+            const tb = b.lastSolvedAt ? new Date(b.lastSolvedAt).getTime() : 0;
+            return ta - tb;
+        });
+        return candidates[0];
+    }
+
+    // ── Best-effort 3rd-pass fallback: when both P_win scans miss, return the
+    // coldest unsolved chapter question regardless of qElo band. Prevents the
+    // Flow / Hardcore buttons from looking broken in chapters whose qElo
+    // range is too narrow to ever reach the strict P_win window or the
+    // minQeloFloor (e.g. fresh maths/3D Geometry with qElo 1250-1600 vs.
+    // a 1200-rated user: Flow wants P_win∈[0.75,0.85] which requires qElo
+    // ≈1320-1370 — nowhere in this bank. Hardcore wants qElo≥1800 floor
+    // which is outside the chapter's empirical band.). The user gets a
+    // console.warn so they know the strict window didn't match. ──
+    // ── Closest-Elo Bridging ──
+    // The band's centre P_win is (PwinMin + PwinMax) / 2. From the canonical
+    // formula  P = 1 / (1 + 10^((Q − E) / 400))   solve for Q so we know
+    // which qElo is the IDEAL target for this mode. Then sort by smallest
+    // |qElo − ideal| so the user gets the closest-match question even when
+    // no qElo falls inside the strict window.
+    const targetP   = (cfg.PwinMin + cfg.PwinMax) / 2;
+    const safeP     = Math.max(0.01, Math.min(0.99, targetP));
+    const idealQElo = Math.round(userElo - 400 * Math.log10(safeP / (1 - safeP)));
+    function scanBestEffort() {
+        if (!bank.length) return null;
+        const sorted = bank.slice().sort((a, b) => {
+            const ga = Math.abs(a.qElo - idealQElo);
+            const gb = Math.abs(b.qElo - idealQElo);
+            if (ga !== gb) return ga - gb;        // smallest gap to ideal wins
+            const sa = (a.solveCount || 0) - (b.solveCount || 0);
+            if (sa !== 0) return sa;
+            const ta = a.lastSolvedAt ? new Date(a.lastSolvedAt).getTime() : 0;
+            const tb = b.lastSolvedAt ? new Date(b.lastSolvedAt).getTime() : 0;
+            return ta - tb;
+        });
+        return sorted[0];
+    }
+    const bestEffort = scanBestEffort();
+    if (bestEffort && (mode === 'hardcore' || mode === 'flow')) {
+        const strictSc  = scan(cfg.PwinMin, cfg.PwinMax, mode === 'hardcore');
+        const fallbackSc = scan(cfg.PwinFallbackMin, cfg.PwinFallbackMax, mode === 'hardcore');
+        if (!strictSc && !fallbackSc) {
+            const qEloMin   = Math.min.apply(null, bank.map(x => x.qElo));
+            const qEloMax   = Math.max.apply(null, bank.map(x => x.qElo));
+            const chosenGap = Math.abs(bestEffort.qElo - idealQElo);
+            console.warn(
+                '[practice mode] No ' + mode + '-eligible chapter questions match the ' +
+                'strict P_win [' + cfg.PwinMin + ', ' + cfg.PwinMax + '] window ' +
+                '(userElo=' + userElo + ', chapter qElo range ' + qEloMin + '–' + qEloMax + '). ' +
+                'Closest-elo bridge: picked qElo ' + bestEffort.qElo + ' (gap ' + chosenGap +
+                ' pts from ideal ' + idealQElo + ') so the user gets a question instead ' +
+                'of a silent dead-end. Solve more chapter questions to widen the band.'
+            );
+        }
+    }
+    return scan(cfg.PwinMin, cfg.PwinMax, mode === 'hardcore')
+        || scan(cfg.PwinFallbackMin, cfg.PwinFallbackMax, mode === 'hardcore')
+        || bestEffort;
+}
+
+/** Set the active practice mode and persist it. */
+function _setPracticeMode(mode) {
+    if (!PRACTICE_MODES.includes(mode)) return;
+    AppState.practiceFlowMode = mode;
+    // Reset hardcore daily counter if the date rolled over
+    const today = new Date().toISOString().slice(0, 10);
+    if (mode === 'hardcore') {
+        if (AppState.hardcoreDailyDate !== today) {
+            AppState.hardcoreDailyDate = today;
+            AppState.hardcoreDailyCount = 0;
+        }
+        if (AppState.hardcoreDailyCount >= (MODE_TUNING.hardcore.capPerDay || 8)) {
+            alert('Daily Hardcore cap reached (' + (MODE_TUNING.hardcore.capPerDay || 8) + '). Override tomorrow with full send.');
+            // Revert mode + repaint badge so the UI doesn't lie about state.
+            AppState.practiceFlowMode = 'standard';
+            _renderModeBadge();
+            saveAllAsync().catch(console.error);
+            return;
+        }
+    }
+    saveAllAsync().catch(console.error);
+    _rebuildPracticeQuestionsForMode();
+    _renderModeBadge();
+    // ── Open the practice modal with the freshly-picked mode question ──
+    // Without this call the buttons appear to "do nothing" — the queue is
+    // built and the badge painted but the modal never opens, so the user
+    // sees no UI change. Mirrors what startPracticeWithQuestion does for
+    // the standard path.
+    if (AppState.practiceQuestions.length > 0 &&
+        typeof renderPracticeQuestionModal === 'function') {
+        renderPracticeQuestionModal();
+    }
+    // ── Start the practice-question timer ──
+    // Mirror startPracticeWithQuestion's timing setup so practiceSeconds actually
+    // ticks from 0. Without this setInterval the modal opens but no timer fires,
+    // leaving practiceSeconds stuck at 0 and the FAST/SLOW time-bonus pill hidden
+    // on the result chip (because _modeTimeMultiplier reads a stale τ=1).
+    if (AppState.practiceTimer) clearInterval(AppState.practiceTimer);
+    AppState.practiceTimer = setInterval(() => {
+        AppState.practiceSeconds++;
+        if (typeof updatePracticeTimerDisplay === 'function') {
+            updatePracticeTimerDisplay();
+        }
+    }, 1000);
+}
+
+/** Exit practice mode back to standard filter-by-status. */
+function _exitPracticeMode() {
+    AppState.practiceFlowMode = 'standard';
+    if (AppState.practiceTimer) { clearInterval(AppState.practiceTimer); AppState.practiceTimer = null; }
+    AppState.practiceSeconds = 0;
+    AppState.practiceQuestions = [];
+    AppState.practiceSubmittedFlags = [];
+    AppState.currentPracticeIndex = 0;
+    saveAllAsync().catch(console.error);
+    _renderModeBadge();
+    if (typeof renderPracticeQuestionModal === 'function') renderPracticeQuestionModal();
+}
+
+/**
+ * Refill AppState.practiceQuestions with one mode-appropriate question,
+ * reset practiceSubmittedFlags, currentPracticeIndex. This is the post-solve
+ * auto-refill for Flow / Hardcore.
+ */
+function _rebuildPracticeQuestionsForMode() {
+    const mode = AppState.practiceFlowMode;
+    if (mode === 'standard' || !PRACTICE_MODES.includes(mode)) return;
+    const q = _pickQuestionForMode(AppState.currentSubject, AppState.currentChapter, mode);
+    if (!q) {
+        // No more mode-eligible questions in this chapter — gracefully exit
+        // the mode so the user is not stuck staring at a blank practice modal.
+        const label = mode === 'flow' ? 'Flow' : 'Hardcore';
+        alert('No more ' + label + '-eligible questions in this chapter. Exiting to standard mode.');
+        AppState.practiceFlowMode = 'standard';
+        _renderModeBadge();
+        saveAllAsync().catch(console.error);
+        AppState.practiceQuestions = [];
+        AppState.practiceSubmittedFlags = [];
+        AppState.currentPracticeIndex = 0;
+        AppState.practiceSeconds = 0;
+        if (typeof renderPracticeQuestionModal === 'function') renderPracticeQuestionModal();
+        return;
+    }
+    // We have a fresh mode-appropriate question; reset queue to a one-item pool.
+    AppState.practiceQuestions = [q];
+    AppState.practiceSubmittedFlags = AppState.practiceQuestions.map(() => false);
+    AppState.currentPracticeIndex = 0;
+    AppState.practiceSeconds = 0;
+}
+
+/**
+ * Inject the two big glowing mode buttons into the chapter-detail view.
+ * Idempotent — safe to call multiple times.
+ */
+function _renderModeButtonsIntoChapterDetail() {
+    const view = document.getElementById('practice-chapter-detail-view');
+    if (!view) return;
+    let row = document.getElementById('mode-buttons-row');
+    if (!row) {
+        row = document.createElement('div');
+        row.id = 'mode-buttons-row';
+        row.className = 'mode-buttons-row';
+        // Inline styles honouring the codebase's pure-vanilla aesthetic
+        row.style.cssText = 'display:flex; gap:14px; margin:18px 0 8px; flex-wrap:wrap; justify-content:center;';
+        const header = view.querySelector('.practice-header');
+        if (header && header.nextSibling) view.insertBefore(row, header.nextSibling);
+        else view.appendChild(row);
+        // Inject the pulse animations exactly once
+        if (!document.getElementById('mode-button-style')) {
+            const style = document.createElement('style');
+            style.id = 'mode-button-style';
+            style.textContent = `
+                @keyframes pulse-flow     { 0%,100%{box-shadow:0 0 0 0 rgba(0,200,255,.55);} 50%{box-shadow:0 0 24px 4px rgba(0,200,255,.45);} }
+                @keyframes pulse-hardcore { 0%,100%{box-shadow:0 0 0 0 rgba(255,80,80,.65);} 50%{box-shadow:0 0 26px 5px rgba(255,60,60,.55);} }
+                .mode-btn { font-family:'Orbitron',sans-serif; font-weight:700; letter-spacing:.5px; padding:18px 22px; border-radius:14px; cursor:pointer; color:#fff; border:none; box-shadow:0 6px 20px rgba(0,0,0,.45); transition:transform .15s ease,box-shadow .25s ease; min-width:260px; text-align:left; }
+                .mode-btn:hover { transform:translateY(-2px); }
+                .mode-btn:active { transform:translateY(0); }
+                .mode-btn .mode-title    { font-size:15px; font-weight:800; margin-bottom:6px; display:block; }
+                .mode-btn .mode-subtitle { font-size:11px; font-weight:400; opacity:.85; line-height:1.35; }
+                .mode-btn-flow     { background:linear-gradient(135deg, rgba(0,200,255,.78), rgba(0,160,210,.55)); animation:pulse-flow 1.7s ease-in-out infinite; }
+                .mode-btn-hardcore { background:linear-gradient(135deg, rgba(255,90,90,.85), rgba(220,40,40,.6)); animation:pulse-hardcore 1.2s ease-in-out infinite; }
+                .mode-exit-pill { margin:8px auto 0; padding:6px 12px; border-radius:999px; background:rgba(255,255,255,.05); border:1px solid rgba(255,255,255,.18); font-size:11px; color:var(--text-muted,#bbb); cursor:pointer; display:none; }
+                .mode-exit-pill.active { display:inline-block; }
+            `;
+            document.head.appendChild(style);
+        }
+    }
+    if (document.getElementById('btn-mode-flow')) return;
+    const flow = document.createElement('button');
+    flow.id = 'btn-mode-flow';
+    flow.className = 'mode-btn mode-btn-flow';
+    flow.innerHTML = '<span class="mode-title">🎯 FLOW STATE</span><span class="mode-subtitle">Default grind · P_win ∈ [0.75, 0.85] · target ≈ qElo+50 to +120 · 45 min lockin</span>';
+    flow.onclick = () => _setPracticeMode('flow');
+    const hardcore = document.createElement('button');
+    hardcore.id = 'btn-mode-hardcore';
+    hardcore.className = 'mode-btn mode-btn-hardcore';
+    hardcore.innerHTML = '<span class="mode-title">⚡ HARDCORE / OVERCLOCK</span><span class="mode-subtitle">Boss-fight · P_win ∈ [0.35, 0.50] · qElo ≥ 1800 · 1.8× wins · +2× cosmetic drops</span>';
+    hardcore.onclick = () => _setPracticeMode('hardcore');
+    row.appendChild(flow);
+    row.appendChild(hardcore);
+    const exit = document.createElement('button');
+    exit.id = 'mode-exit-pill';
+    exit.className = 'mode-exit-pill';
+    exit.textContent = '↺ Exit Mode (back to standard filter)';
+    exit.onclick = () => _exitPracticeMode();
+    row.appendChild(exit);
+    _renderModeBadge();
+}
+
+/** Reflect the current mode in the badges/exit-pill without re-rendering buttons. */
+function _renderModeBadge() {
+    const exit = document.getElementById('mode-exit-pill');
+    const mode = AppState.practiceFlowMode;
+    if (exit) {
+        if (mode === 'standard') exit.classList.remove('active');
+        else { exit.textContent = '↺ Exit ' + (mode === 'flow' ? '🎯 Flow' : '⚡ Hardcore') + ' (back to standard)'; exit.classList.add('active'); }
+    }
+    // Header chip — paint a small badge so the user can SEE which mode is active
+    const head = document.querySelector('#practice-chapter-detail-view .practice-header');
+    if (!head) return;
+    let chip = document.getElementById('mode-active-chip');
+    if (mode === 'standard') {
+        if (chip) chip.remove();
+        return;
+    }
+    if (!chip) {
+        chip = document.createElement('span');
+        chip.id = 'mode-active-chip';
+        chip.style.cssText = 'display:inline-block; padding:4px 10px; border-radius:999px; font-size:11px; font-weight:700; letter-spacing:.5px; margin-left:10px;';
+        head.appendChild(chip);
+    }
+    chip.textContent = mode === 'flow' ? '🎯 FLOW' : '⚡ HARDCORE';
+    chip.style.background = mode === 'flow'
+        ? 'linear-gradient(135deg, rgba(0,200,255,.8), rgba(0,160,210,.6))'
+        : 'linear-gradient(135deg, rgba(255,90,90,.85), rgba(220,40,40,.6))';
+    chip.style.color = '#fff';
+}
+
+// Expose the public entry points so the onclick handlers work from inline HTML
+window.startFlowPractice     = () => _setPracticeMode('flow');
+window.startHardcorePractice = () => _setPracticeMode('hardcore');
+window.exitPracticeMode      = () => _exitPracticeMode();
+
 function calculateEloMigration(subject, actualTime, scoreOutcome, chapterHealth, questionObj) {
     const safeSubject = _normalizeSubjectKey(subject);
     const base = ELO_SUBJECT_BASELINES[safeSubject];
@@ -3468,6 +4122,97 @@ function calculateEloMigration(subject, actualTime, scoreOutcome, chapterHealth,
 
     const E_s = AppState.elo[safeSubject] || 1200;
     const Q_Elo = (questionObj && typeof questionObj.qElo === 'number') ? questionObj.qElo : 1200;
+
+    // === INSERTED: Delta-Based Reward Fast Path (pre-ELO schema) ===
+    if (_isQuestionEloCalibrated(questionObj)) {
+        const dr = _deltaBasedUserAndQuestionReward(
+            E_s, Q_Elo, (Number(scoreOutcome) === 1) ? 1 : 0, safeSubject,
+            Number(actualTime) || 0,
+            _eloTargetSeconds(questionObj || { qElo: Q_Elo })
+        );
+        const oldE_s = E_s;
+        let newE_s = Math.max(0, Math.min(ELO_GEM_STAMP_TUNING.ceiling, E_s + dr.rawSubjectDelta));
+        AppState.elo[safeSubject] = newE_s;
+
+        // Practice-mode reward multipliers + escrow bonus multiplier.
+        // Hardcore wins get 1.8×, losses get 0.6× sympathy; escrow bonus 2×.
+        // Flow mode passes through at 1.0× (standard cadence).
+        const mode = AppState.practiceFlowMode || 'standard';
+        const modeCfg = MODE_TUNING[mode] || MODE_TUNING.standard;
+        dr.rawSubjectDelta = Math.round(
+            dr.rawSubjectDelta *
+            (Sefc === 1 ? modeCfg.winsMultiplier : modeCfg.lossMultiplier)
+        );
+
+        let _acctEscrowAccrued = 0;
+        if (dr.rawSubjectDelta > 0) {
+            const rawEscrow = AccountabilityEngine.accrueEscrowBonus(safeSubject, dr.rawSubjectDelta);
+            _acctEscrowAccrued = Math.round(rawEscrow * (modeCfg.escrowBonusMultiplier || 1));
+            // Track hardcore daily use (only when winning on hardcore)
+            if (mode === 'hardcore' && Sefc === 1) {
+                const today = new Date().toISOString().slice(0, 10);
+                if (AppState.hardcoreDailyDate !== today) {
+                    AppState.hardcoreDailyDate = today;
+                    AppState.hardcoreDailyCount = 0;
+                }
+                AppState.hardcoreDailyCount = (AppState.hardcoreDailyCount || 0) + 1;
+            }
+        }
+
+        const oldQ = Q_Elo;
+        let newQ = Math.max(0, Q_Elo + dr.qEloDrift);
+
+        const chapterAvg = _getChapterAvgElo(safeSubject, questionObj.chapter);
+        let isAnomaly = false;
+        if (Math.abs(newQ - chapterAvg) > 600) { isAnomaly = true; }
+
+        const Sefc = (Number(scoreOutcome) === 1) ? 1 : 0;
+        questionObj.qEloSource = (questionObj.qEloSource === 'gem-stamped') ? 'gem-stamped' : 'learned';
+        questionObj.solveCount = (questionObj.solveCount || 0) + 1;
+        questionObj.lastSolvedAt = new Date().toISOString();
+        questionObj.qElo = newQ;
+        if (isAnomaly) questionObj.isAnomaly = true;
+        if (Sefc === 1) {
+            questionObj.easeFactor = Math.min(3.0, (questionObj.easeFactor || 2.5) + 0.15);
+        } else {
+            questionObj.easeFactor = Math.max(1.3, (questionObj.easeFactor || 2.5) - 0.2);
+        }
+
+        const oldGlobal = AppState.elo.global || 1200;
+        const newGlobal = _computeGlobalMetaMMR(
+            AppState.elo.physics || 1200,
+            AppState.elo.chemistry || 1200,
+            AppState.elo.maths || 1200
+        );
+        AppState.elo.global = newGlobal;
+
+        const oldTier = getRankTierDetails(oldE_s);
+        const newTier = getRankTierDetails(newE_s);
+
+        result.deltaSubject = newE_s - oldE_s;
+        result.deltaGlobal = newGlobal - oldGlobal;
+        result.newSubjectElo = newE_s;
+        result.newGlobalElo = newGlobal;
+        result.newQElo = newQ;
+        result.oldQElo = oldQ;
+        result.tierChanged = oldTier.name !== newTier.name;
+        result.oldTier = oldTier.badge;
+        result.newTier = newTier.badge;
+        result.isAnomaly = isAnomaly;
+        result.escrowBonus = _acctEscrowAccrued;
+        // Time-bonus metadata for injectEloShiftChip
+        result.timeBonusFactor = parseFloat(timeMult.toFixed(3));
+        result.tauSeconds = Math.round(Number(dr.tauSeconds) || 0);
+        result.timeBonusLabel = (timeMult >= 1.10)
+            ? 'FAST ×' + timeMult.toFixed(2)
+            : (timeMult <= 0.85)
+                ? 'SLOW ×' + timeMult.toFixed(2)
+                : 'BALANCED';
+        result.modeActive = (AppState.practiceFlowMode && AppState.practiceFlowMode !== 'standard')
+            ? AppState.practiceFlowMode : null;
+        return result;
+    }
+    // === END INSERTED FAST PATH ===
 
     // ── Step B: Implied Performance Rating (R_perf) ──
     const tauSafe = Math.max(0.001, tau);
@@ -3539,6 +4284,15 @@ function calculateEloMigration(subject, actualTime, scoreOutcome, chapterHealth,
     }
 
     const oldE_s = E_s;
+    // Practice-mode multiplier: Hardcore win = 1.8×, loss = 0.6× sympathy;
+    // Flow = 1.0× passthrough. Apply BEFORE the newE_s mutation so the
+    // user-visible delta matches the badge exactly.
+    {
+        const modeCfg = MODE_TUNING[AppState.practiceFlowMode || 'standard'];
+        const isWin = (S === 1);
+        const m = isWin ? (modeCfg.winsMultiplier || 1) : (modeCfg.lossMultiplier || 1);
+        rawDelta = Math.round(rawDelta * m);
+    }
     let newE_s = Math.max(0, E_s + rawDelta);
     if (newE_s > 2999.99) newE_s = 2999.99;
     AppState.elo[safeSubject] = newE_s;
@@ -3558,6 +4312,17 @@ function calculateEloMigration(subject, actualTime, scoreOutcome, chapterHealth,
     if (questionObj) {
         questionObj.qElo = newQ;
         if (isAnomaly) questionObj.isAnomaly = true;
+
+        // ── NEW (pre-ELO schema): solve-count + learned-source transition ──
+        // Increment solveCount on every legacy-path solve. After
+        // CALIBRATED_SOLVE_THRESHOLD solves, the fast-path delta branch
+        // takes over and the legacy R_perf warmup is retired. Also flip
+        // qEloSource to 'learned' once we've recorded the first solve.
+        questionObj.solveCount = (questionObj.solveCount || 0) + 1;
+        questionObj.lastSolvedAt = new Date().toISOString();
+        if (questionObj.qEloSource !== 'gem-stamped') {
+            questionObj.qEloSource = 'learned';
+        }
 
         // ── Biological Memory Construct: permanent field attachment ──
         // When an execution frame resolves, stamp the question with the exact
@@ -4026,6 +4791,35 @@ function renderEloMatrix() {
         }
         .elo-header-chip .elo-shift-delta { font-size: 15px; }
         .elo-header-chip .elo-shift-tier { opacity: 0.75; font-size: 11px; }
+        .elo-shift-chip .elo-shift-time,
+        .elo-header-chip .elo-shift-time {
+            margin-left: 6px; padding: 2px 7px; border-radius: 6px;
+            font-size: 11px; letter-spacing: 0.04em; font-weight: 600;
+            vertical-align: middle; background: rgba(255,255,255,0.06);
+            border: 1px solid rgba(255,255,255,0.10);
+            display: inline-block; white-space: nowrap;
+        }
+        .elo-shift-chip .elo-shift-time.time-fast,
+        .elo-header-chip .elo-shift-time.time-fast {
+            color: #7CFFB2;
+            background: rgba(124,255,178,0.14);
+            border: 1px solid rgba(124,255,178,0.45);
+            box-shadow: 0 0 6px rgba(124,255,178,0.35);
+        }
+        .elo-shift-chip .elo-shift-time.time-slow,
+        .elo-header-chip .elo-shift-time.time-slow {
+            color: #FF8585;
+            background: rgba(255,133,133,0.14);
+            border: 1px solid rgba(255,133,133,0.45);
+            box-shadow: 0 0 6px rgba(255,133,133,0.35);
+        }
+        .elo-shift-chip .elo-shift-time.time-mode,
+        .elo-header-chip .elo-shift-time.time-mode {
+            color: #E0CFFF;
+            background: rgba(160,120,255,0.16);
+            border: 1px solid rgba(160,120,255,0.50);
+            letter-spacing: 0.06em;
+        }
         @keyframes eloChipPop {
             0% { transform: scale(0.5); opacity: 0; }
             60% { transform: scale(1.15); }
@@ -4051,13 +4845,23 @@ function injectEloShiftChip(eloResult) {
     // ── Chip in the practice modal content (original location) ──
     const container = document.getElementById('practice-modal-content');
     if (container) {
-        const chip = document.createElement('div');
-        chip.className = 'elo-shift-chip ' + (delta >= 0 ? 'elo-up' : 'elo-down');
-        chip.innerHTML =
-            `<span class="elo-shift-delta">${sign}${Math.round(delta)}</span>` +
-            `<span class="elo-shift-label">${subjLabel} Elo</span>` +
-            `<span class="elo-shift-tier">[${tier.name}]</span>`;
-        container.appendChild(chip);
+    // ── Time-bonus pill (FAST / SLOW / BALANCED) from calculateEloMigration's
+    // result.timeBonusFactor attachment. Only renders when meaningful so the
+    // chip stays clean on neutral solves. ──
+    const timeFactor = (typeof eloResult.timeBonusFactor === 'number') ? eloResult.timeBonusFactor : 1.0;
+    const tauShown  = (typeof eloResult.tauSeconds === 'number' && eloResult.tauSeconds > 0) ? eloResult.tauSeconds : null;
+    let timeChild = '';
+    if (timeFactor >= 1.10)      timeChild = `<span class="elo-shift-time time-fast">FAST ×${timeFactor.toFixed(2)}${tauShown ? ' · ' + Math.round(tauShown) + 's' : ''}</span>`;
+    else if (timeFactor <= 0.85) timeChild = `<span class="elo-shift-time time-slow">SLOW ×${timeFactor.toFixed(2)}${tauShown ? ' · ' + Math.round(tauShown) + 's' : ''}</span>`;
+    const modeTag = eloResult.modeActive ? `<span class="elo-shift-time time-mode">[${eloResult.modeActive === 'flow' ? '🎯 FLOW' : '⚡ HC'}]</span>` : '';
+    const chip = document.createElement('div');
+    chip.className = 'elo-shift-chip ' + (delta >= 0 ? 'elo-up' : 'elo-down');
+    chip.innerHTML =
+        `<span class="elo-shift-delta">${sign}${Math.round(delta)}</span>` +
+        `<span class="elo-shift-label">${subjLabel} Elo</span>` +
+        `<span class="elo-shift-tier">[${tier.name}]</span>` +
+        timeChild + modeTag;
+    container.appendChild(chip);
         // Auto-remove after the animation completes.
         setTimeout(() => { if (chip && chip.parentNode) chip.parentNode.removeChild(chip); }, 4200);
     }
@@ -4269,6 +5073,16 @@ export function practiceSubmit() {
     // RTCDataChannel. Strictly isolated from the save/sync pipeline above.
     try { if (typeof LeaderboardNet !== 'undefined') LeaderboardNet.broadcastTelemetry(); } catch (_) {}
 
+    // ── Stop the practice-question timer ──
+    // Without this clearInterval, the timer keeps ticking past answer submission,
+    // pushing practiceSeconds higher than the actual solve time. The next modal
+    // render inherits a stale τ, inflating the slow-penalty / Fast-Slow chip
+    // math and contaminating downstream Elo deltas.
+    if (AppState.practiceTimer) {
+        clearInterval(AppState.practiceTimer);
+        AppState.practiceTimer = null;
+    }
+
     if (AppState.bountyMode) {
         evaluateBountyOutcome(isCorrect);
         return;
@@ -4426,6 +5240,13 @@ export function confirmErrorLog() {
 }
 
 export function practiceNext() {
+    // CRITICAL: Flow / Hardcore mode auto-refill — keep the user locked in.
+    // Before advancing the index, if a mode is active, refill the queue with
+    // a freshly-picked mode-appropriate question. This is what makes the
+    // "tap one button, sit back for 45 minutes" UX work end-to-end.
+    if (AppState.practiceFlowMode && AppState.practiceFlowMode !== 'standard') {
+        _rebuildPracticeQuestionsForMode();
+    }
     if (AppState.currentPracticeIndex + 1 < AppState.practiceQuestions.length) {
         AppState.currentPracticeIndex++;
         AppState.practiceSeconds = 0;
