@@ -1241,6 +1241,8 @@ export async function getDailyHistory() {
     const todayEntry = history.find(entry => entry.date === todayStr);
     if (todayEntry) { todayEntry.count = todayTotal; } else { history.push({ date: todayStr, count: todayTotal }); if (history.length > 15) history.shift(); }
     await idbSet('jeemax_daily_history', history);
+    // ── Seed the sync daily history cache for Deload Engine's 48h missed-day check ──
+    try { window._dailyHistoryCache = history; } catch (_) {}
     return history;
 }
 

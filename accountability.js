@@ -262,6 +262,20 @@ function settlePreviousDayIfNeeded() {
   let anyMissed = false;
   let anyRepaid = false;
 
+  // ── Deload Day: hoist check outside the per-subject loop. If the
+  // settled day was a deload day, ALL subjects skip debt accrual. ──
+  let _isDeloadDay = false;
+  try {
+      if (window.__deload && typeof window.__deload.isDeloadDate === 'function') {
+          _isDeloadDay = window.__deload.isDeloadDate(lastSettle);
+      }
+  } catch (_) {}
+  if (_isDeloadDay) {
+      receipt._deloadDay = true;
+      receipt._deloadDate = lastSettle;
+      _addNote('🌿 Deload Day: missed-debt cancelled for all subjects. Rest day preserved.');
+  }
+
   for (const subj of SUBJECTS) {
     const target = _snapshot.targets[subj] || _effectiveTarget(subj);
     const solvedCount = _snapshot.solved[subj] || 0;
@@ -280,6 +294,20 @@ function settlePreviousDayIfNeeded() {
     }
 
     const effectiveMissed = Math.max(0, missed - shieldUsed);
+
+    // ── Deload Day: skip debt accrual (check hoisted before the loop).
+    // Overtime still repays existing debt (negative carry-forward). ──
+    if (_isDeloadDay) {
+        if (overtime > 0 && _subjectDebt(subj) > 0) {
+            const repay = Math.min(_subjectDebt(subj), overtime);
+            const intRepay = Math.min(_state.debt.interest[subj], repay);
+            _state.debt.interest[subj] -= intRepay;
+            const prinRepay = repay - intRepay;
+            _state.debt.principal[subj] = Math.max(0, _state.debt.principal[subj] - prinRepay);
+            receipt.debtRepaid[subj] = repay;
+        }
+        continue; // skip normal debt accrual for this subject
+    }
 
     // ── Absence cap ──
     const debtToAdd = receipt.absence
@@ -904,6 +932,12 @@ function renderDesk() {
   container.innerHTML = `
     <div class="acct-desk-inner">
       <div class="acct-top-row">
+        <!-- ── Deload Day: schedule button when eligible ── -->
+        <div class="acct-deload-row" style="margin-bottom:0.5rem">
+          <span style="font-size:12px;color:var(--text-muted)">Deload:</span>
+          <button class="btn btn-sm" style="font-size:11px;padding:2px 10px;margin-left:6px;background:rgba(168,85,247,0.15);border:1px solid rgba(168,85,247,0.3);color:#c4b5fd;border-radius:4px;cursor:pointer"
+                  onclick="window.scheduleDeloadFromUi()">🌿 Schedule Earned Rest</button>
+        </div>
         <div class="acct-debt-status" style="--tier-color:${tier.color}">
           <span class="acct-tier-badge">${tier.name}</span>
           <span class="acct-debt-total">${view.total}</span>

@@ -75,6 +75,58 @@ import { drawCandlesticks, extractCountsFromSvg } from './candlestick-engine.js'
 // API keys, or backup configs, and never calls saveAllAsync.
 import { LeaderboardNet } from './leaderboard.js';
 import { AccountabilityEngine } from './accountability.js';
+import { CNSLoad } from './cns-load.js';
+import { DeloadEngine } from './deload.js';
+import { Lifeline } from './lifeline.js';
+import { NightGuard } from './nightguard.js';
+
+// ── CNS Load bridge: exposes studySecs for pomodoro-quit session subtraction ──
+// cns-load.js reads window._studySecsForCns when onPomodoroQuit fires so
+// tSeverity resets to zero after a legitimate pomodoro quit.
+window._studySecsForCns = studySecs;
+
+// ── Deload bridge: exposes getDailyHistory for 48h missed-day check ──
+// deload.js reads window._deloadDailyHistoryFn to verify no recent missed days.
+// We provide a sync wrapper that reads from the in-memory last-known state
+// plus merges today's live counters.
+function getDailyHistorySync() {
+    try {
+        const todayStr = new Date().toISOString().split('T')[0];
+        const todayTotal = (solved.physics || 0) + (solved.chemistry || 0) + (solved.maths || 0);
+        // Pull the last-known history from the IndexedDB cache on window
+        const cached = window._dailyHistoryCache || [];
+        const merged = [...cached];
+        const todayIdx = merged.findIndex(e => e.date === todayStr);
+        if (todayIdx >= 0) {
+            merged[todayIdx] = { date: todayStr, count: todayTotal };
+        } else {
+            merged.push({ date: todayStr, count: todayTotal });
+        }
+        return merged.slice(-15);
+    } catch (e) { return []; }
+}
+window._deloadDailyHistoryFn = getDailyHistorySync;
+
+// ── Deload: expose manual scheduling for inline onclick in HTML ──
+window.scheduleDeloadFromUi = function() {
+    const result = DeloadEngine.scheduleManualDeload();
+    if (result.ok) {
+        // Refresh streak display and UI
+        updateStreakDisplay();
+        updateUI();
+        try { AccountabilityEngine.renderDesk(); } catch (_) {}
+        alert('🌿 Deload Day scheduled. Your streak is preserved. Today is an Earned Rest day.');
+    } else {
+        alert('Cannot schedule deload: ' + result.reason);
+    }
+};
+
+// ── Daily history cache: updated on every getDailyHistory call so the
+// sync bridge has the latest data without async IndexedDB round-trips. ──
+const _originalGetDailyHistory = getDailyHistory;
+window._dailyHistoryCache = [];
+// We can't override the import, so we'll seed the cache from updateUI
+// and updateStreakDisplay which both call getDailyHistory.
 
 // ==================== LOCAL STATE ====================
 // State that doesn't need to be shared with other modules
@@ -479,6 +531,22 @@ export async function calibrateMood(mood) {
 
     AccountabilityEngine.captureSnapshot();
 
+    // ── Deload Days: mood calibration to 1.0 overrides forced deload ──
+    try {
+        if (typeof DeloadEngine !== 'undefined' && AppState.moodMultiplier === 1.0) {
+            DeloadEngine.overrideForcedDeload(1.0);
+        }
+    } catch (_) {}
+
+    // ── Sleep-debt mood penalty: also apply ceiling in calibrateMood
+    // so the user doesn't see a flicker when updateUI runs next.
+    try {
+        if (typeof NightGuard !== 'undefined') {
+            const _sdPenalty = NightGuard.getSleepDebtMoodPenalty();
+            if (_sdPenalty < 1.0) AppState.moodMultiplier = Math.min(AppState.moodMultiplier, _sdPenalty);
+        }
+    } catch (_) {}
+
     await idbSet('jeemax_mood_multiplier', AppState.moodMultiplier);
     await idbSet('jeemax_last_calibrated_date', new Date().toISOString().split('T')[0]);
     await saveAllAsync();
@@ -657,6 +725,109 @@ function _scanCatBannerVulnerabilities() {
         }
     }
 
+    // ── PRIORITY 7: CNS_LOAD_ALERT ────────────────────────────────────────
+    // Triggered when CNS_LOAD ≥ 0.75 — the student is grinding in the
+    // drought zone where ELO yield is halved or worse.
+    {
+        try {
+            if (typeof CNSLoad !== 'undefined') {
+                const maxCns = CNSLoad.getMaxCnsReading();
+                if (maxCns >= 0.90) {
+                    vulnerabilities.push({
+                        priority: 3,  // high priority — sleep debt is real
+                        className: 'glow-red',
+                        text: `🌑 CNS SHUTDOWN: Brain at ${Math.round(maxCns * 100)}% load. ELO yield ×0.20. Stop grinding — sleep debt is real.`,
+                    });
+                } else if (maxCns >= 0.75) {
+                    vulnerabilities.push({
+                        priority: 5,
+                        className: 'glow-orange',
+                        text: `🥀 CNS DROUGHT: Cognitive load at ${Math.round(maxCns * 100)}%. Yield severely reduced. Consider a 10-min walk.`,
+                    });
+                } else if (maxCns >= 0.55) {
+                    vulnerabilities.push({
+                        priority: 7,
+                        className: 'glow-orange',
+                        text: `🪴 CNS WARNING: ${Math.round(maxCns * 100)}% load. Accuracy slipping. Pace your watering.`,
+                    });
+                }
+            }
+        } catch (_) { /* CNSLoad may not be available yet */ }
+    }
+
+    // ── Deload Engine vulnerabilities ──
+    try {
+      const _deloadStatus = DeloadEngine.getTodayDeloadStatus();
+      if (_deloadStatus && _deloadStatus.active) {
+        vulnerabilities.push({
+          priority: 2,
+          className: 'glow-green',
+          text: `🌿 DELOAD ACTIVE: ${_deloadStatus.label}. Streak preserved. Brain consolidating — like a muscle between sets.`,
+        });
+      }
+    } catch (_) {}
+
+    // ── Flow Lifeline vulnerability ──
+    try {
+      if (typeof Lifeline !== 'undefined') {
+        const _ls = Lifeline.getStatus();
+        if (_ls.active) {
+          vulnerabilities.push({
+            priority: 5,  // informational comfort, not a warning
+            className: 'glow-blue',
+            text: `🌊 LIFELINE ACTIVE: CNS at ${Math.round(_ls.cnsLoad * 100)}%. P_win windows shifted to easier zone. ELO yield ×0.65. Tap practice drawer to dismiss.`,
+          });
+        }
+      }
+    } catch (_) {}
+
+    // ── Post-23:00 Night Guard vulnerability ──
+    try {
+      if (typeof NightGuard !== 'undefined') {
+        const _ng = NightGuard.getStatus();
+        if (_ng.active) {
+          const _multPct = Math.round(_ng.multiplier * 100);
+          if (_ng.tier === 'tier3') {
+            vulnerabilities.push({
+              priority: 2,  // critical — sleep deprivation is actively harmful
+              className: 'glow-red',
+              text: `🛌 SLEEP DEPRIVATION: ${_ng.badge} ELO yield ×${_ng.multiplier}. ${_ng.label}`,
+            });
+          } else if (_ng.tier === 'tier2') {
+            vulnerabilities.push({
+              priority: 3,
+              className: 'glow-orange',
+              text: `🌑 LATE NIGHT (Tier 2): ${_ng.badge} ELO yield ×${_ng.multiplier}. ${_ng.label}`,
+            });
+          } else {
+            vulnerabilities.push({
+              priority: 4,
+              className: 'glow-blue',
+              text: `🌙 LATE NIGHT (Tier 1): ${_ng.badge} ELO yield ×${_ng.multiplier}. ${_ng.label}`,
+            });
+          }
+        }
+        // ── Morning override warning ──
+        const _overrideWarn = NightGuard.getOverrideWarning();
+        if (_overrideWarn) {
+          vulnerabilities.push({
+            priority: 3,
+            className: 'glow-orange',
+            text: _overrideWarn,
+          });
+        }
+        // ── Sleep-debt mood penalty warning ──
+        const _sdConsecutive = NightGuard.getConsecutiveSleepDebtDays();
+        if (_sdConsecutive >= 3) {
+          vulnerabilities.push({
+            priority: 3,
+            className: 'glow-orange',
+            text: `💤 SLEEP DEBT ACTIVE: ${_sdConsecutive} consecutive days flagged. Mood multiplier forced to 0.85. Prioritize recovery.`,
+          });
+        }
+      }
+    } catch (_) {}
+
     // ── Accountability Engine vulnerabilities ──
     try {
       const acctVulns = AccountabilityEngine.getCatBannerVulnerabilities();
@@ -711,6 +882,26 @@ function _scanCatBannerVulnerabilities() {
     function _tick() {
         const catText = document.getElementById('cat-text');
         if (!catText) return;
+
+        // ── Night Guard: Tier 3 modal auto-trigger (03:00+ uninterruptible) ──
+        try { if (typeof NightGuard !== 'undefined') NightGuard.checkAndShowTier3Modal(); } catch (_) {}
+        // ── Night Guard: Tier 2 auto-dismiss after 5s (spec: "5s auto-dismiss OK") ──
+        try {
+            if (typeof NightGuard !== 'undefined') {
+                const _ngs = NightGuard.getStatus();
+                if (_ngs.active && _ngs.tier === 'tier2' && !window.__tier2DismissScheduled) {
+                    window.__tier2DismissScheduled = true;
+                    setTimeout(() => {
+                        try { NightGuard.dismissCurrentTier(); } catch (_) {}
+                        window.__tier2DismissScheduled = false;
+                    }, 5000);
+                }
+                // Clear stale flag if no longer in Tier 2
+                if (!_ngs.active || _ngs.tier !== 'tier2') {
+                    window.__tier2DismissScheduled = false;
+                }
+            }
+        } catch (_) {}
 
         // ── Cognitive MMR Deficit Lockdown takes absolute priority over the
         // normal telemetry rotation. While the profile symmetry ratio is
@@ -783,6 +974,15 @@ export async function updateUI() {
 
     persistDailyCountsFromSolved();
 
+    // ── Sleep-Debt mood penalty: 3+ consecutive sleep-debt days
+    // force a CEILING of 0.85 (never raises an already-lower mood).
+    try {
+        if (typeof NightGuard !== 'undefined') {
+            const _sdPenalty = NightGuard.getSleepDebtMoodPenalty();
+            if (_sdPenalty < 1.0) AppState.moodMultiplier = Math.min(AppState.moodMultiplier, _sdPenalty);
+        }
+    } catch (_) {}
+
     let overallPct = Math.floor((pctP + pctC + pctM) / 3);
     // Render the progress view into #cat-text. This is factored out so the
     // cat-banner telemetry loop can re-render the progress view on its A-tick
@@ -824,6 +1024,38 @@ export async function updateStreakDisplay() {
             activeDates.add(h.date);
         }
     });
+
+    // ── Deload Days streak continuity: deload days count as REST days
+    // (sepia/rest cell on heat map) and preserve the streak. The user gets
+    // credit for the previous-day chain on a deload day as long as they
+    // solved ≥1 problem on each of the previous 6 days (spec: the streak
+    // counter keeps rolling on a 6-day backing chain). ──
+    try {
+        if (typeof DeloadEngine !== 'undefined') {
+            const allHistory = history || [];
+            const deloadDates = (DeloadEngine.state && DeloadEngine.state.manualDeloads || [])
+                .map(d => d.date)
+                .concat((DeloadEngine.state && DeloadEngine.state.forcedDeloads || [])
+                    .filter(d => !d.overridden)
+                    .map(d => d.date));
+            deloadDates.forEach(d => {
+                // Verify the 6 preceding days all have solves
+                let all6Solved = true;
+                const deloadDate = new Date(d + 'T12:00:00');
+                for (let i = 1; i <= 6; i++) {
+                    const prev = new Date(deloadDate);
+                    prev.setDate(prev.getDate() - i);
+                    const prevStr = prev.toISOString().split('T')[0];
+                    const entry = allHistory.find(h => h.date === prevStr);
+                    if (!entry || (entry.count || 0) === 0) {
+                        all6Solved = false;
+                        break;
+                    }
+                }
+                if (all6Solved) activeDates.add(d);
+            });
+        }
+    } catch (_) {}
 
     let streak = 0;
     let checkDate = new Date();
@@ -4062,8 +4294,35 @@ function _pickQuestionForMode(subject, chapter, mode) {
             );
         }
     }
-    return scan(cfg.PwinMin, cfg.PwinMax, mode === 'hardcore')
-        || scan(cfg.PwinFallbackMin, cfg.PwinFallbackMax, mode === 'hardcore')
+    // ── Flow Lifeline: shift P_win windows toward easier problems when
+    // CNS_LOAD crosses the fire threshold. Rebalances challenge-skill into
+    // the flow channel. The lifeline dismisses after ONE solve. ──
+    let _pwMin = cfg.PwinMin;
+    let _pwMax = cfg.PwinMax;
+    let _fbMin = cfg.PwinFallbackMin;
+    let _fbMax = cfg.PwinFallbackMax;
+    try {
+        if (typeof Lifeline !== 'undefined') {
+            const _lifeline = Lifeline.evaluateLifeline(subject, chapter, mode, userElo, bank);
+            if (_lifeline.active) {
+                _pwMin = _lifeline.pwinMin;
+                _pwMax = _lifeline.pwinMax;
+                // Fallback windows widen proportionally
+                const _shift = _lifeline.pwinMin - cfg.PwinMin;
+                _fbMin = Math.min(1, (cfg.PwinFallbackMin || cfg.PwinMin) + _shift);
+                _fbMax = Math.min(1, (cfg.PwinFallbackMax || cfg.PwinMax) + _shift);
+                // Activate lifeline state so ribbon UI and cat-banner can detect it
+                Lifeline.activateLifeline();
+                // Tag the pick as lifeline-assisted
+                window.__lastQuestionPickedWithLifeline = true;
+            } else {
+                window.__lastQuestionPickedWithLifeline = false;
+            }
+        }
+    } catch (_) {}
+
+    return scan(_pwMin, _pwMax, mode === 'hardcore')
+        || scan(_fbMin, _fbMax, mode === 'hardcore')
         || bestEffort;
 }
 
@@ -4336,6 +4595,56 @@ function calculateEloMigration(subject, actualTime, scoreOutcome, chapterHealth,
 
         const oldE_s = E_s;
         let newE_s = Math.max(0, Math.min(ELO_GEM_STAMP_TUNING.ceiling, E_s + dr.rawSubjectDelta));
+
+        // ── CNS Load: stepped yield multiplier on subject ELO gain only (NOT qElo drift) ──
+        // Skip CNS computation when night guard Tier 3 is active — the night guard
+        // ×0.20 penalty supersedes CNS and avoids multiplicative stacking to ~0.05×.
+        const _nightForceCnsPre = NightGuard.shouldForceCns();
+        if (!_nightForceCnsPre) {
+            const _cns = CNSLoad.computeCnsLoad(safeSubject, studySecs);
+            const _cnsMult = _cns.multiplier;
+            if (_cnsMult < 1.0) {
+                const _cnsDelta = Math.round(dr.rawSubjectDelta * _cnsMult);
+                newE_s = Math.max(0, Math.min(ELO_GEM_STAMP_TUNING.ceiling, E_s + _cnsDelta));
+            }
+            result.cnsLoad = _cns.cnsLoad;
+            result.cnsMultiplier = _cns.multiplier;
+            result.cnsBadge = _cns.badge;
+            result.cnsLabel = _cns.label;
+            result.cnsTauCap = _cns.tauCap;
+        }
+
+        // ── Flow Lifeline: if this solve was lifeline-assisted, multiply
+        // subject ELO gain by 0.65 and tag for telemetry. ──
+        if (window.__lastQuestionPickedWithLifeline) {
+            const _preLifelineElo = AppState.elo[safeSubject];
+            const _lifelineDelta = Math.round((newE_s - E_s) * 0.65);
+            AppState.elo[safeSubject] = Math.max(0, Math.min(ELO_GEM_STAMP_TUNING.ceiling, E_s + _lifelineDelta));
+            newE_s = AppState.elo[safeSubject];
+            result.lifelineActive = true;
+            result.lifelineMultiplier = 0.65;
+            if (questionObj) questionObj._lifelineAssisted = true;
+            window.__lastQuestionPickedWithLifeline = false;
+            // Reset lifeline dismissal after solve completes
+            try { Lifeline.resetAfterSolve(); } catch (_) {}
+        }
+
+        // ── Post-23:00 Diminishing Returns Guard: late-night ELO yield degradation ──
+        const _nightMult = NightGuard.getMultiplier();
+        if (_nightMult < 1.0) {
+            const _nightDelta = Math.round((newE_s - E_s) * _nightMult);
+            newE_s = Math.max(0, Math.min(ELO_GEM_STAMP_TUNING.ceiling, E_s + _nightDelta));
+            result.nightGuardActive = true;
+            result.nightGuardMultiplier = _nightMult;
+        }
+        // Force-set CNS metadata when Tier 3 is active (CNS computation already skipped above)
+        if (_nightForceCnsPre) {
+            result.cnsLoad = 1.0;
+            result.cnsMultiplier = 0.20;
+            result.cnsBadge = '🛌';
+            result.cnsLabel = 'CNS force-set: late-night Tier 3';
+        }
+
         AppState.elo[safeSubject] = newE_s;
 
         let _acctEscrowAccrued = 0;
@@ -4511,6 +4820,39 @@ function calculateEloMigration(subject, actualTime, scoreOutcome, chapterHealth,
       }
     }
     let newE_s = Math.max(0, E_s + rawDelta);
+
+    // ── CNS Load: stepped yield multiplier on subject ELO gain only (legacy R_perf path) ──
+    // Skip CNS when night guard Tier 3 is active to prevent multiplicative stacking.
+    const _ngLegacyForcePre = NightGuard.shouldForceCns();
+    if (!_ngLegacyForcePre) {
+        const _cnsLegacy = CNSLoad.computeCnsLoad(safeSubject, studySecs);
+        const _cnsLgMult = _cnsLegacy.multiplier;
+        if (_cnsLgMult < 1.0) {
+            const _cnsLgDelta = Math.round(rawDelta * _cnsLgMult);
+            newE_s = Math.max(0, E_s + _cnsLgDelta);
+        }
+        result.cnsLoad = _cnsLegacy.cnsLoad;
+        result.cnsMultiplier = _cnsLegacy.multiplier;
+        result.cnsBadge = _cnsLegacy.badge;
+        result.cnsLabel = _cnsLegacy.label;
+        result.cnsTauCap = _cnsLegacy.tauCap;
+    }
+
+    // ── Post-23:00 Diminishing Returns Guard (legacy path) ──
+    const _ngLegacyMult = NightGuard.getMultiplier();
+    if (_ngLegacyMult < 1.0) {
+        const _ngLegacyDelta = Math.round(rawDelta * _ngLegacyMult);
+        newE_s = Math.max(0, E_s + _ngLegacyDelta);
+        result.nightGuardActive = true;
+        result.nightGuardMultiplier = _ngLegacyMult;
+    }
+    if (_ngLegacyForcePre) {
+        result.cnsLoad = 1.0;
+        result.cnsMultiplier = 0.20;
+        result.cnsBadge = '🛌';
+        result.cnsLabel = 'CNS force-set: late-night Tier 3';
+    }
+
     if (newE_s > 2999.99) newE_s = 2999.99;
     AppState.elo[safeSubject] = newE_s;
 
@@ -4592,6 +4934,12 @@ function calculateEloMigration(subject, actualTime, scoreOutcome, chapterHealth,
     result.newTier = newTier.badge;
     result.isAnomaly = isAnomaly;
     result.escrowBonus = _acctEscrowAccrued;
+
+    // ── CNS Load: log this solve into rolling accuracy/τ windows ──
+    try {
+        CNSLoad.logSolve(safeSubject, scoreOutcome === 'correct', actualTime || 0, T_avg);
+    } catch (_) { /* never block ELO migration */ }
+
     return result;
 }
 
@@ -6267,6 +6615,30 @@ async function initApp() {
     await AccountabilityEngine.init();
     if (lastCalDate !== todayStr) {
         const _acctReceipt = AccountabilityEngine.settlePreviousDayIfNeeded();
+
+        // ── Deload Engine: auto-fire forced deload before settlement if eligible ──
+        // Runs at midnight so the forced deload takes effect for the day being
+        // settled. The CNS_LOAD consecutive-day check uses yesterday's data.
+        try {
+            if (typeof DeloadEngine !== 'undefined') {
+                const _forcedCheck = DeloadEngine.isForcedDeloadEligible();
+                if (_forcedCheck.eligible) {
+                    const _result = DeloadEngine.triggerForcedDeload();
+                    if (_result.ok) {
+                        // Brief notification so the student knows about the 30-min override window
+                        try {
+                            const _receipt = document.getElementById('settlement-receipt-content');
+                            if (_receipt) {
+                                const _note = document.createElement('div');
+                                _note.className = 'receipt-extra';
+                                _note.innerHTML = '🌿🌿 <b>Biodemand Recovery triggered.</b> CNS overload detected — forced rest day. Calibrate mood to baseline (😐) within 30 min to override.';
+                                _receipt.appendChild(_note);
+                            }
+                        } catch (_) {}
+                    }
+                }
+            }
+        } catch (_) {}
         if (_acctReceipt) {
           // Show receipt after a brief delay so the UI is painted
           setTimeout(() => AccountabilityEngine.showSettlementReceipt(_acctReceipt), 600);
@@ -6325,6 +6697,10 @@ async function initApp() {
 
              // Flush tracking parameters for the new daily matrix cycle
      snapshotCumDayStart();
+     // ── CNS Load: reset per-day session tracking at midnight ──
+     try { CNSLoad.resetDaily(); } catch (_) {}
+     // ── Night Guard: reset dismissal flag at midnight ──
+     try { NightGuard.resetDaily(); } catch (_) {}
      solved.physics = 0;
         solved.chemistry = 0;
         solved.maths = 0;

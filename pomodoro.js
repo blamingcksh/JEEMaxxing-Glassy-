@@ -1,6 +1,7 @@
 // ==================== POMODORO MODULE ====================
 import { formatTime, formatStudyDuration, saveAllAsync, studySecs } from './storage.js';
 import { GalleryBreak } from './gallery-break.js';
+import { NightGuard } from './nightguard.js';
 
 // ---- Pomodoro-specific state (module-scoped) ----
 let timerInterval, secondsLeft, totalSecondsForState, pomoState = 'IDLE',
@@ -12,6 +13,9 @@ let visualMode = 'bar';
 
 let isStopwatchMode = false;
 let timerStartTime = null;        // Date.now() at start/resume
+
+// ── Night Guard bridge: exposes timerStartTime for clock-cheat cross-check ──
+window.__pomodoro = { getTimerStartTime: () => timerStartTime };
 let timerTotalSeconds = 0;        // total seconds for countdown
 let stopwatchAccumulated = 0;    // seconds already counted before pause (stopwatch mode)
 let timerEndTriggered = false;   // prevent multiple handleTimerEnd calls
@@ -263,6 +267,8 @@ export function toggleStopwatchMode(btn) {
 // ---- Start timer (real-time initialisation) ----
 export function startTimer() {
     if (pomoState !== 'IDLE') return;
+    // ── Night Guard: log session start for sleep-debt ledger ──
+    try { NightGuard.logSessionStart(); } catch (_) {}
     studySubject = document.getElementById('pomo-subject').value;
     document.querySelectorAll('.pomo-input, .pomo-select').forEach(el => el.disabled = true);
     document.getElementById('btn-start').style.display = 'none';
@@ -405,8 +411,12 @@ export function resumeTimer() {
 
 export function quitTimer() {
     clearInterval(timerInterval);
+    // ── Night Guard: log session end for sleep-debt ledger ──
+    try { NightGuard.logSessionEnd(); } catch (_) {}
     saveAllAsync().catch(console.error);
     GalleryBreak.abort();
+    // ── CNS Load: pomodoro quit resets session-length tracking ──
+    try { if (window.__cnsLoad) window.__cnsLoad.onPomodoroQuit(studySubject); } catch (_) {}
     document.getElementById('timer-notify-modal').classList.remove('active');
     _pomoPendingAction = null;
     timerEndTriggered = true; // prevent handleTimerEnd from firing later

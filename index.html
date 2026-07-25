@@ -590,6 +590,37 @@
     </div>
 </div>
 
+<!-- Post-23:00 Night Guard Modal (Tier 3: uninterruptible, long-press 3s override) -->
+<div id="nightguard-modal" class="modal-overlay" style="display:none">
+    <div class="modal-content nightguard-card">
+        <div class="nightguard-icon">🛌</div>
+        <h2 id="nightguard-title">Begin Recovery?</h2>
+        <p id="nightguard-message">You are not learning. You are reinforcing noise. Save your hours.</p>
+        <div class="nightguard-actions">
+            <button id="nightguard-override-btn" class="btn btn-ghost"
+                    onmousedown="window._nightguardOverrideStart=Date.now()"
+                    onmouseup="window._nightguardOverrideEnd=Date.now();if(Date.now()-window._nightguardOverrideStart>=3000){window.__nightGuard.recordOverride();document.getElementById('nightguard-modal').style.display='none';document.body.classList.remove('nightguard-tint');}else{document.getElementById('nightguard-override-btn').textContent='Hold for 3s to override';setTimeout(()=>{document.getElementById('nightguard-override-btn').textContent='Hold for 3s to override'},1000)}"
+                    onmouseleave="window._nightguardOverrideStart=null"
+                    ontouchstart="window._nightguardOverrideStart=Date.now()"
+                    ontouchend="window._nightguardOverrideEnd=Date.now();if(Date.now()-window._nightguardOverrideStart>=3000){window.__nightGuard.recordOverride();document.getElementById('nightguard-modal').style.display='none';document.body.classList.remove('nightguard-tint');}else{document.getElementById('nightguard-override-btn').textContent='Hold for 3s to override';setTimeout(()=>{document.getElementById('nightguard-override-btn').textContent='Hold for 3s to override'},1000)}">
+                Hold for 3s to override
+            </button>
+            <button class="btn btn-primary" onclick="window.location.reload()">End Session</button>
+        </div>
+    </div>
+    <style>
+        .nightguard-card { background: linear-gradient(135deg, #0a0a2e 0%, #1a0a2e 100%); border: 1px solid rgba(147,51,234,0.3); max-width: 420px; text-align: center; padding: 2rem; }
+        .nightguard-card h2 { color: #c084fc; font-size: 1.4rem; margin: 0.5rem 0; }
+        .nightguard-card p { color: #a5b4fc; font-size: 0.95rem; line-height: 1.5; margin-bottom: 1.5rem; }
+        .nightguard-icon { font-size: 3rem; margin-bottom: 0.5rem; }
+        .nightguard-actions { display: flex; gap: 0.75rem; justify-content: center; flex-wrap: wrap; }
+        #nightguard-override-btn { min-width: 160px; transition: all 0.2s; }
+        #nightguard-override-btn:active { background: rgba(147,51,234,0.2); transform: scale(0.97); }
+        body.nightguard-tint { background-color: #0a1628 !important; }
+        body.nightguard-tint::after { content: ''; position: fixed; inset: 0; background: rgba(10,22,40,0.5); pointer-events: none; z-index: 999; }
+    </style>
+</div>
+
 <!-- Timer Notification (pomodoro.js phase transitions)
      Class-controlled ONLY — pomodoro.js toggles .active, never inline display. -->
 <div id="timer-notify-modal" class="modal-overlay">
