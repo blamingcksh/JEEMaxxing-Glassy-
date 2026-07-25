@@ -65,6 +65,7 @@ import { drawCandlesticks, extractCountsFromSvg } from './candlestick-engine.js'
 // fully decoupled from local persistence — it never reads AppState.questionBank,
 // API keys, or backup configs, and never calls saveAllAsync.
 import { LeaderboardNet } from './leaderboard.js';
+import { AccountabilityEngine } from './accountability.js';
 
 // ==================== LOCAL STATE ====================
 // State that doesn't need to be shared with other modules
@@ -425,6 +426,8 @@ export async function switchTab(viewId, element) {
     if (viewId === 'dashboard') {
         await renderGraph();
         try { renderChapterDecayGrid(); } catch (_) {}
+        try { AccountabilityEngine.renderDesk(); } catch (_) {}
+        AccountabilityEngine.captureSnapshotThrottled();
     }
     // ── P2P Leaderboard: re-sync the arena grid when the tab is shown ──
     if (viewId === 'leaderboard' && typeof LeaderboardNet !== 'undefined') {
@@ -447,6 +450,8 @@ export async function calibrateMood(mood) {
     AppState.activeTargets.physics = Math.round(baseTargets.physics * AppState.moodMultiplier);
     AppState.activeTargets.chemistry = Math.round(baseTargets.chemistry * AppState.moodMultiplier);
     AppState.activeTargets.maths = Math.round(baseTargets.maths * AppState.moodMultiplier);
+
+    AccountabilityEngine.captureSnapshot();
 
     await idbSet('jeemax_mood_multiplier', AppState.moodMultiplier);
     await idbSet('jeemax_last_calibrated_date', new Date().toISOString().split('T')[0]);
@@ -626,6 +631,12 @@ function _scanCatBannerVulnerabilities() {
         }
     }
 
+    // ── Accountability Engine vulnerabilities ──
+    try {
+      const acctVulns = AccountabilityEngine.getCatBannerVulnerabilities();
+      for (const v of acctVulns) vulnerabilities.push(v);
+    } catch (_) {}
+
     // Sort by priority ascending (1 = highest) and return the top one.
     if (vulnerabilities.length === 0) return null;
     vulnerabilities.sort((a, b) => a.priority - b.priority);
@@ -766,6 +777,8 @@ export async function updateUI() {
     // the dashboard always reflects the live rating state. ──
     try { renderEloMatrix(); } catch (_) { /* never block updateUI */ }
     try { renderChapterDecayGrid(); } catch (_) { /* never block updateUI */ }
+    try { AccountabilityEngine.renderDesk(); } catch (_) {}
+    AccountabilityEngine.captureSnapshotThrottled();
 
     updateStreakDisplay();
 }
@@ -1233,6 +1246,23 @@ export async function saveProfile() {
 }
 
 export async function saveTargets() {
+    // ── Accountability freeze check ──
+    const _freezeCheck = AccountabilityEngine.isTargetEditBlocked();
+    if (_freezeCheck.blocked) {
+      alert(`🔒 ${_freezeCheck.reason}`);
+      return;
+    }
+    // ── Debt decrease check (per subject) ──
+    const _newPhys = parseInt(document.getElementById('set-tgt-phys').value) || 10;
+    const _newChem = parseInt(document.getElementById('set-tgt-chem').value) || 10;
+    const _newMath = parseInt(document.getElementById('set-tgt-math').value) || 10;
+    for (const [_subj, _newT] of [['physics', _newPhys], ['chemistry', _newChem], ['maths', _newMath]]) {
+      const _decCheck = AccountabilityEngine.isTargetDecreaseBlocked(_subj, _newT);
+      if (_decCheck.blocked) {
+        alert(`🔒 ${_decCheck.reason}`);
+        return;
+      }
+    }
     baseTargets.physics = parseInt(document.getElementById('set-tgt-phys').value) || 10;
     baseTargets.chemistry = parseInt(document.getElementById('set-tgt-chem').value) || 10;
     baseTargets.maths = parseInt(document.getElementById('set-tgt-math').value) || 10;
@@ -3502,6 +3532,12 @@ function calculateEloMigration(subject, actualTime, scoreOutcome, chapterHealth,
         }
     }
 
+    // ── Accountability Engine: accrue escrow bonus on positive delta ──
+    let _acctEscrowAccrued = 0;
+    if (rawDelta > 0) {
+      _acctEscrowAccrued = AccountabilityEngine.accrueEscrowBonus(safeSubject, rawDelta);
+    }
+
     const oldE_s = E_s;
     let newE_s = Math.max(0, E_s + rawDelta);
     if (newE_s > 2999.99) newE_s = 2999.99;
@@ -3573,6 +3609,7 @@ function calculateEloMigration(subject, actualTime, scoreOutcome, chapterHealth,
     result.oldTier = oldTier.badge;
     result.newTier = newTier.badge;
     result.isAnomaly = isAnomaly;
+    result.escrowBonus = _acctEscrowAccrued;
     return result;
 }
 
@@ -4220,6 +4257,9 @@ export function practiceSubmit() {
      console.error('Elo migration fault:', _eloErr);
  }
  if (_eloResult) applyDifficulty(AppState.currentQ, AppState.currentQ.subject, _eloResult);
+ // ── Accountability: escrow toast + snapshot ──
+ if (_eloResult) AccountabilityEngine.renderEscrowToast(_eloResult);
+ AccountabilityEngine.captureSnapshotThrottled();
  if (AppState.currentQ && AppState.currentQ.status === 'solved') stampPlantCum(AppState.currentQ, AppState.currentQ.subject);
  saveAllAsync().catch(console.error);
 
@@ -4286,9 +4326,9 @@ export function addTextQuestionFollowUp() {
                 _getChapterHealth(AppState.currentQ.subject, AppState.currentQ.chapter),
                 AppState.currentQ
             );
-             } catch (_e) { console.error('Elo migration fault:', _e); }
-     applyDifficulty(AppState.currentQ, AppState.currentQ.subject, _eloRes);
-     stampPlantCum(AppState.currentQ, AppState.currentQ.subject);
+             } catch (_e) { console.error('Elo migration fault:', _e); }      applyDifficulty(AppState.currentQ, AppState.currentQ.subject, _eloRes);
+      AccountabilityEngine.captureSnapshotThrottled();
+      stampPlantCum(AppState.currentQ, AppState.currentQ.subject);
      saveAllAsync().catch(console.error);
      if (AppState.bountyMode) {
          evaluateBountyOutcome(true);
@@ -4321,11 +4361,11 @@ export function addTextQuestionFollowUp() {
                 _getChapterHealth(AppState.currentQ.subject, AppState.currentQ.chapter),
                 AppState.currentQ
             );
-             } catch (_e) { console.error('Elo migration fault:', _e); }
-     applyDifficulty(AppState.currentQ, AppState.currentQ.subject, _eloRes);
-     saveAllAsync().catch(console.error);
-     if (AppState.bountyMode) {
-         evaluateBountyOutcome(false);
+             } catch (_e) { console.error('Elo migration fault:', _e); }      applyDifficulty(AppState.currentQ, AppState.currentQ.subject, _eloRes);
+      AccountabilityEngine.captureSnapshotThrottled();
+      saveAllAsync().catch(console.error);
+      if (AppState.bountyMode) {
+          evaluateBountyOutcome(false);
             return;
         }
         btnContainer.remove();
@@ -5158,15 +5198,28 @@ async function initApp() {
     const todayStr = new Date().toISOString().split('T')[0];
     const lastCalDate = await idbGet('jeemax_last_calibrated_date');
     
+    // ── Accountability Engine v2: init ALWAYS, settle on new day ──
+    await AccountabilityEngine.init();
+    if (lastCalDate !== todayStr) {
+        const _acctReceipt = AccountabilityEngine.settlePreviousDayIfNeeded();
+        if (_acctReceipt) {
+          // Show receipt after a brief delay so the UI is painted
+          setTimeout(() => AccountabilityEngine.showSettlementReceipt(_acctReceipt), 600);
+        }
+    }
+
     if (lastCalDate === todayStr) {
         AppState.activeTargets.physics = Math.round(baseTargets.physics * AppState.moodMultiplier);
         AppState.activeTargets.chemistry = Math.round(baseTargets.chemistry * AppState.moodMultiplier);
         AppState.activeTargets.maths = Math.round(baseTargets.maths * AppState.moodMultiplier);
     } else {
-        // ── CRITICAL: PREVENT LIQUIDATION REFLEX EXPLOIT ON REFRESH ──
-        // Using a distinct calendar check ensures the 20 ELO penalty executes exactly once 
-        // per daily transition, even if you reload the interface before closing the mood modal.
-        const lastTaxDate = await idbGet('jeemax_last_tax_date');
+
+        // ── OLD 20-ELO TAX: DISABLED — Debt Engine is now the single source of truth ──
+        // The old flat tax would double-punish alongside the debt settlement above.
+        // Only fire it as a fallback if the accountability engine somehow has no state.
+        const _acctActive = !!(window.__accountability && window.__accountability.state);
+        if (!_acctActive) {
+            const lastTaxDate = await idbGet('jeemax_last_tax_date');
         
         if (lastTaxDate !== todayStr) {
             // Extract baseline question deficits relative to previous targets
@@ -5202,6 +5255,7 @@ async function initApp() {
             }
             // Commit structural tax state signature timestamp to storage
             await idbSet('jeemax_last_tax_date', todayStr);
+        }
         }
 
              // Flush tracking parameters for the new daily matrix cycle
@@ -5270,6 +5324,7 @@ document.addEventListener('DOMContentLoaded', initApp);
 // ==================== WINDOW GLOBAL WIRING ====================
 window.switchTab = switchTab;
 window.LeaderboardNet = LeaderboardNet;
+window.AccountabilityEngine = AccountabilityEngine;
 window.toggleSidebar = toggleSidebar;
 window.openModal = openModal;
 window.closeModal = closeModal;
