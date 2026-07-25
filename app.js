@@ -2247,16 +2247,19 @@ export function saveAllQuestions() {
 
         let newQ = {
             id: crypto.randomUUID ? crypto.randomUUID() : (Date.now() + i).toString(),
-            // ── Subject/chapter fallback chain ──
-            // When the question came from a Gemini Gem JSON paste, the
-            // pre-ELO schema carries its own subject/chapter stamps. Honour
-            // those first, only falling back to the user's current session
-            // context when the gem stamp is missing. Without this chain, a
-            // user pasting a Gem export for "Rotational Mechanics" while
-            // sitting in chapter "Kinematics" would silently retag their
-            // imported questions as Kinematics.
-            subject: (typeof q.subject === 'string' && q.subject) ? _normalizeSubjectKey(q.subject) : AppState.currentSubject,
-            chapter: (typeof q.chapter === 'string' && q.chapter.trim()) ? q.chapter.trim() : AppState.currentChapter,
+            // ── Placement: session context ALWAYS wins ──
+            // Questions are filed exactly where the user was when they pasted
+            // or uploaded them — external subject/chapter stamps (Gemini Gem
+            // payloads) used to override this and silently spawn new chapters.
+            // The Gem's stamps are still preserved as gemSubject / gemChapter
+            // provenance on the bank object for future tooling; they never
+            // drive placement and never create chapters.
+            subject: _normalizeSubjectKey(AppState.currentSubject || 'physics'),
+            chapter: (typeof AppState.currentChapter === 'string' && AppState.currentChapter.trim())
+                ? AppState.currentChapter.trim()
+                : null,
+            gemSubject: (typeof q.gemSubject === 'string' && q.gemSubject) ? q.gemSubject : null,
+            gemChapter: (typeof q.gemChapter === 'string' && q.gemChapter) ? q.gemChapter : null,
             imageDataUrl: q.imageDataUrl,
             diagramImageUrl: q.diagramImageUrl || null,
             extractedText: q.extractedText || "",
@@ -2716,10 +2719,18 @@ export async function processGemTextDump() {
                 qEloStampedBy: gemStampedBy,
                 qEloStampedAt: gemStampedAt,
                 tags: gemTags,
-                difficulty: typeof rawQ.difficulty === 'string' ? rawQ.difficulty : null,
-                chapter: sanitizeChapterName(rawQ.chapter),
-                subject: _normalizeSubjectKey(rawQ.subject || AppState.currentSubject || 'physics'),
-            });
+                difficulty: typeof rawQ.difficulty === 'string' ? rawQ.difficulty : null,                // ── Placement fix: the question lives where the user pasted it ──
+                // subject/chapter are locked to the active session context. The
+                // Gem's own stamps are preserved ONLY as backend provenance
+                // (gemSubject / gemChapter) for future tooling — they never
+                // drive placement and never spawn new chapters.
+                subject: _normalizeSubjectKey(AppState.currentSubject || 'physics'),
+                chapter: (typeof AppState.currentChapter === 'string' && AppState.currentChapter.trim())
+                    ? AppState.currentChapter.trim()
+                    : null,
+                gemSubject: _normalizeSubjectKey(rawQ.subject || '') || null,
+                gemChapter: sanitizeChapterName(rawQ.chapter),
+});
         }
 
         // ── NEW: anti-cheat distribution check per-chapter ────────────────
@@ -2730,18 +2741,18 @@ export async function processGemTextDump() {
         // automation (stdDev < 15 over >20 questions = same-script timing).
         const chapterStats = _auditGemBatchByChapter(parsedItems);
         for (const it of parsedItems) {
-            const subjKey = _normalizeSubjectKey(it.subject || 'unknown');  // match _auditGemBatchByChapter bucket generator
-            // Key order MUST match _auditGemBatchByChapter's bucket generator
-            // (`subj + '|' + ch`) — the previous 'chapter|subject' order never
-            // matched, so the suspicious-distribution / low-stdev stamps were
-            // silently never applied.
-            const key = subjKey + '|' + (it.chapter || '');
+            // Keyed on the GEM's provenance stamps so a mixed-chapter paste is
+            // audited exactly as the Gem structured it. Key order MUST match
+            // _auditGemBatchByChapter's bucket generator, including its trim +
+            // toString normalization so untrimmed future callers still match.
+            const subjKey = _normalizeSubjectKey(it.gemSubject || it.subject || 'unknown');
+            const key = subjKey + '|' + ((it.gemChapter || it.chapter) || '').toString().trim();
             const stat = chapterStats[key];
             if (stat && stat.suspiciousDistribution) it.stampBatchSuspiciousDistribution = true;
             if (stat && stat.suspiciousStdev) it.stampBatchSuspiciousStdev = true;
-            // Chapter-ceiling guard: if stamped qElo is >600 above the
-            // chapter's prior avg, the engine will auto-quarantine (isAnomaly)
-            // — also surface the warning here so the user sees it in preview.
+
+            // Chapter-ceiling guard now checks the DESTINATION chapter (where the
+            // question actually lands), not the Gem's source chapter.
             const priorAvg = _getChapterAvgElo(it.subject, it.chapter);
             if (typeof it.qElo === 'number' && Math.abs(it.qElo - priorAvg) > 600) {
                 it.qElo = Math.round(priorAvg + 600 * Math.sign(it.qElo - priorAvg));
@@ -3815,8 +3826,10 @@ function _auditGemBatchByChapter(items) {
     // group
     const buckets = {};
     for (const it of items) {
-        const subj = _normalizeSubjectKey(it.subject || 'unknown');  // 'unknown' surfaces normalization bugs loudly
-        const ch   = (it.chapter || '').toString().trim();
+        // Prefer the Gem's provenance stamps (source chapters); fall back to
+        // placement fields for non-gem items.
+        const subj = _normalizeSubjectKey(it.gemSubject || it.subject || 'unknown');
+        const ch   = ((it.gemChapter || it.chapter) || '').toString().trim();
         if (!ch) continue;
         const key = subj + '|' + ch;
         if (!buckets[key]) buckets[key] = { subject: subj, chapter: ch, qElos: [] };
